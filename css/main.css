@@ -478,6 +478,33 @@ img { max-width: 100%; display: block; }
   pointer-events: none; opacity: 0; transition: opacity 0.2s;
 }
 .td-toast.visible { opacity: 1; }
+
+.home-quick-nav {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 16px 0 20px;
+}
+
+.home-quick-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid var(--color-border);
+  background: var(--color-card);
+  box-shadow: var(--shadow-card);
+}
+
+.home-quick-card--consult { border-top: 3px solid var(--color-coral); }
+.home-quick-card--about { border-top: 3px solid var(--color-mint); }
+.home-quick-icon { font-size: 22px; }
+.home-quick-title { font-size: 17px; font-weight: 800; color: var(--color-primary); }
+.home-quick-desc { font-size: 12px; color: var(--color-text-muted); line-height: 1.45; }
+
 .sv-result-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
 .sv-result-actions button { width: 100%; }
 

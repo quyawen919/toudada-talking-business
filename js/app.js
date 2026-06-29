@@ -95,15 +95,38 @@ function renderQrTargets() {
   const urlEl = document.getElementById('qr-url')
   if (urlEl) urlEl.textContent = url
   const draw = (canvas, size) => {
-    if (!canvas || !window.QRCode) return
-    QRCode.toCanvas(canvas, url, { width: size, margin: 2, color: { dark: '#1a3668' } }).catch(() => {
-      canvas.insertAdjacentHTML('afterend', `<p class="qr-fallback">二维码加载失败，请复制链接：<a href="${url}">${url}</a></p>`)
-    })
+    if (!canvas) return
+    const showLinkFallback = () => {
+      if (canvas.dataset.fallback) return
+      canvas.dataset.fallback = '1'
+      canvas.insertAdjacentHTML('afterend', `<p class="qr-fallback"><a href="${url}">${url}</a></p>`)
+    }
+    if (window.QRCode) {
+      QRCode.toCanvas(canvas, url, { width: size, margin: 2, color: { dark: '#1a3668' } }).catch(showLinkFallback)
+    } else {
+      showLinkFallback()
+    }
   }
   draw(document.getElementById('qr-canvas'), 200)
   document.querySelectorAll('[data-qr-canvas]').forEach((c) => draw(c, 180))
   document.querySelectorAll('[data-qr-url]').forEach((el) => {
     el.textContent = url
+  })
+}
+
+function bindSiteNav() {
+  document.querySelectorAll('a[href^="#"]').forEach((link) => {
+    link.addEventListener('click', (e) => {
+      const href = link.getAttribute('href')
+      if (!href || href === '#') return
+      e.preventDefault()
+      const target = href.slice(1)
+      if (location.hash.replace(/^#/, '') !== target) {
+        location.hash = target
+      } else {
+        render()
+      }
+    })
   })
 }
 
@@ -166,6 +189,19 @@ function renderHome() {
             ${['#E85D4C', '#F5A623', '#3DAA8C', '#1A3668'].map((c) => `<span class="avatar-dot" style="background:${c}"></span>`).join('')}
             <span>${esc(HOME_COMMUNITY.memberCount)}</span>
           </div>
+        </section>
+
+        <section class="home-quick-nav" aria-label="快捷入口">
+          <a href="#consult" class="home-quick-card home-quick-card--consult">
+            <span class="home-quick-icon">💬</span>
+            <span class="home-quick-title">咨询</span>
+            <span class="home-quick-desc">30秒问卷 · 24小时内联系</span>
+          </a>
+          <a href="#about" class="home-quick-card home-quick-card--about">
+            <span class="home-quick-icon">👤</span>
+            <span class="home-quick-title">本人</span>
+            <span class="home-quick-desc">了解头大大 · 资历与案例</span>
+          </a>
         </section>
 
         <section class="measure-teaser" id="open-measure">
@@ -747,6 +783,15 @@ function render() {
 }
 
 window.addEventListener('hashchange', render)
+
+bindSiteNav()
+
+document.addEventListener('DOMContentLoaded', () => {
+  const logo = document.querySelector('.site-logo-img')
+  if (logo && window.__SITE_IMG_BASE) {
+    logo.src = window.__SITE_IMG_BASE + '/brand/toudada-talk-business-logo.png'
+  }
+})
 
 document.getElementById('qr-toggle')?.addEventListener('click', () => {
   const panel = document.getElementById('qr-panel')
