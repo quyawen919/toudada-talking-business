@@ -463,12 +463,63 @@ img { max-width: 100%; display: block; }
 .bar-fill { height: 100%; background: linear-gradient(90deg, var(--color-mint), var(--color-primary)); border-radius: 999px; }
 .sv-share-card { margin-top: 16px; }
 .share-label { font-weight: 700; margin-bottom: 8px; }
-.share-text { font-size: 13px; color: var(--color-text-secondary); line-height: 1.55; }
+.share-code { font-size: 15px; margin: 0 0 10px; color: var(--color-primary); }
+.share-code strong { font-size: 18px; letter-spacing: 0.08em; }
+.share-text { font-size: 13px; color: var(--color-text-secondary); line-height: 1.55; margin-bottom: 14px; }
+.share-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+.share-actions .btn-primary,
+.share-actions .btn-secondary { flex: 1; min-width: 140px; }
+.share-hint { font-size: 11px; color: var(--color-text-muted); margin: 0; line-height: 1.5; }
+.qr-fallback { font-size: 11px; color: var(--color-text-muted); word-break: break-all; margin-top: 8px; }
+.td-toast {
+  position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%);
+  background: rgba(26, 54, 104, 0.92); color: #fff; padding: 10px 18px;
+  border-radius: 999px; font: 14px/1.4 "PingFang SC", sans-serif; z-index: 9999;
+  pointer-events: none; opacity: 0; transition: opacity 0.2s;
+}
+.td-toast.visible { opacity: 1; }
 .sv-result-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
 .sv-result-actions button { width: 100%; }
 
 @media (max-width: 768px) {
   .site-nav { display: none; }
   .site-header-cta { margin-left: auto; font-size: 13px; padding: 8px 14px; }
-  .qr-float { right: 12px; bottom: 16px; }
+  .qr-float { right: 12px; bottom: 80px; }
+  body { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+  .site-footer { margin-bottom: 8px; }
+}
+
+.mobile-tabbar {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 180;
+  background: rgba(255, 255, 255, 0.96);
+  border-top: 1px solid var(--color-border);
+  backdrop-filter: blur(12px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-shadow: 0 -4px 24px rgba(26, 54, 104, 0.08);
+}
+
+.mobile-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 56px;
+  text-decoration: none;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.mobile-tab-icon { font-size: 18px; line-height: 1; }
+.mobile-tab.active { color: var(--color-primary); }
+
+@media (max-width: 768px) {
+  .mobile-tabbar { display: flex; }
 }

@@ -57,9 +57,24 @@
     <p class="text-muted">不承诺保证盈利 · 不提供刷单买评</p>
   </footer>
 
+  <nav class="mobile-tabbar" aria-label="底部导航">
+    <a href="#home" class="mobile-tab" data-nav="home">
+      <span class="mobile-tab-icon">🏠</span>
+      <span class="mobile-tab-label">首页</span>
+    </a>
+    <a href="#consult" class="mobile-tab" data-nav="consult">
+      <span class="mobile-tab-icon">💬</span>
+      <span class="mobile-tab-label">咨询</span>
+    </a>
+    <a href="#about" class="mobile-tab" data-nav="about">
+      <span class="mobile-tab-icon">👤</span>
+      <span class="mobile-tab-label">本人</span>
+    </a>
+  </nav>
+
   <div id="modal-root"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+  <script src="js/vendor/qrcode.min.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', function () {
       var logo = document.querySelector('.site-logo-img')

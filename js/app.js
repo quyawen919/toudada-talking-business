@@ -28,7 +28,7 @@ import {
   buildSummary
 } from './constants.js'
 import { createMeasureController } from './measure.js'
-import { img, esc, formatReplyDeadline, getConsultUrl } from './utils.js'
+import { img, esc, formatReplyDeadline, getConsultUrl, getGameShareUrl, buildShareCode, copyText, showToast } from './utils.js'
 
 const LEADS_KEY = 'toudada_web_leads'
 const app = document.getElementById('app')
@@ -72,14 +72,21 @@ function ipGridItems() {
 }
 
 function route() {
+  const params = new URLSearchParams(location.search)
+  const fromQuery = params.get('p')
+  if (fromQuery) {
+    const sub = params.get('sub') || params.get('game') || ''
+    return { page: fromQuery, sub }
+  }
   const hash = location.hash.replace(/^#/, '') || 'home'
   const parts = hash.split('/')
   return { page: parts[0] || 'home', sub: parts[1] || '' }
 }
 
 function setActiveNav(page) {
+  const navPage = page === 'consult' || page === 'questionnaire' ? 'consult' : page
   document.querySelectorAll('[data-nav]').forEach((el) => {
-    el.classList.toggle('active', el.dataset.nav === page)
+    el.classList.toggle('active', el.dataset.nav === navPage)
   })
 }
 
@@ -87,13 +94,14 @@ function renderQrTargets() {
   const url = getConsultUrl()
   const urlEl = document.getElementById('qr-url')
   if (urlEl) urlEl.textContent = url
-  const canvas = document.getElementById('qr-canvas')
-  if (canvas && window.QRCode) {
-    QRCode.toCanvas(canvas, url, { width: 200, margin: 2, color: { dark: '#1a3668' } }).catch(() => {})
+  const draw = (canvas, size) => {
+    if (!canvas || !window.QRCode) return
+    QRCode.toCanvas(canvas, url, { width: size, margin: 2, color: { dark: '#1a3668' } }).catch(() => {
+      canvas.insertAdjacentHTML('afterend', `<p class="qr-fallback">二维码加载失败，请复制链接：<a href="${url}">${url}</a></p>`)
+    })
   }
-  document.querySelectorAll('[data-qr-canvas]').forEach((c) => {
-    if (window.QRCode) QRCode.toCanvas(c, url, { width: 180, margin: 2, color: { dark: '#1a3668' } }).catch(() => {})
-  })
+  draw(document.getElementById('qr-canvas'), 200)
+  document.querySelectorAll('[data-qr-canvas]').forEach((c) => draw(c, 180))
   document.querySelectorAll('[data-qr-url]').forEach((el) => {
     el.textContent = url
   })

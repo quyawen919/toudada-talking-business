@@ -1,7 +1,7 @@
 import { ROUNDS, GUIDE_PATHS, ROUND_DECO, CELL_BGS } from './store-valuator-data.js'
 import { calcValuation, isHighResult, buildShareText } from './store-valuator-engine.js'
 import { GAME_CATALOG, HUB_META } from './game-catalog.js'
-import { esc } from './utils.js'
+import { esc, buildShareCode, copyText, getGameShareUrl, showToast } from './utils.js'
 
 const GUIDE_MS = 520
 const SHOP_TYPES = [
@@ -23,6 +23,7 @@ export function createMeasureController(root, { onClose }) {
     playCount: 0,
     result: null,
     shareText: '',
+    shareCode: '',
     highResult: false,
     audioMuted: false
   }
@@ -162,7 +163,13 @@ export function createMeasureController(root, { onClose }) {
         </div>
         <div class="card sv-share-card">
           <p class="share-label">${state.highResult ? '这估值，值得晒给老板朋友' : '发给老板朋友，看看他的店值多少？'}</p>
+          <p class="share-code">分享口令：<strong>${esc(state.shareCode)}</strong></p>
           <p class="share-text">${esc(state.shareText)}</p>
+          <div class="share-actions">
+            <button type="button" class="btn-primary" data-action="copy-share">复制分享文案</button>
+            <button type="button" class="btn-secondary" data-action="copy-link">复制测测链接</button>
+          </div>
+          <p class="share-hint">粘贴到微信聊天 / 朋友圈即可；朋友打开链接就能玩</p>
         </div>
         <div class="sv-result-actions">
           <button type="button" class="btn-primary" data-action="replay">换选择重新测算</button>
@@ -198,6 +205,16 @@ export function createMeasureController(root, { onClose }) {
       render()
     })
     root.querySelector('[data-action="close"]')?.addEventListener('click', () => onClose())
+    root.querySelector('[data-action="copy-share"]')?.addEventListener('click', async () => {
+      const link = getGameShareUrl()
+      const msg = `${state.shareText}\n口令：${state.shareCode}\n${link}`
+      const ok = await copyText(msg)
+      showToast(ok ? '已复制，去微信粘贴发送吧' : '复制失败，请长按文案手动复制')
+    })
+    root.querySelector('[data-action="copy-link"]')?.addEventListener('click', async () => {
+      const ok = await copyText(getGameShareUrl())
+      showToast(ok ? '链接已复制' : '复制失败，请手动复制链接')
+    })
     root.querySelector('[data-action="replay"]')?.addEventListener('click', () => {
       clearTimers()
       answers = []
@@ -284,6 +301,7 @@ export function createMeasureController(root, { onClose }) {
     state.playCount += 1
     state.result = result
     state.shareText = buildShareText(state.shopType, result)
+    state.shareCode = buildShareCode(result)
     state.highResult = isHighResult(state.shopType, result)
     state.phase = 'result'
     render()

@@ -31,6 +31,48 @@ export function formatReplyDeadline(hours) {
 }
 
 export function getConsultUrl() {
-  const base = window.location.href.split('#')[0]
-  return `${base}#consult`
+  const base = window.location.href.split('#')[0].split('?')[0]
+  return `${base}?p=consult`
+}
+
+export function getGameShareUrl() {
+  const base = window.location.href.split('#')[0].split('?')[0]
+  return `${base}?p=measure&game=store`
+}
+
+/** 娱乐向分享口令（便于朋友圈/群聊复制） */
+export function buildShareCode(result) {
+  const n = result && result.mid ? Math.round(result.mid) : 0
+  return 'TD' + String((n * 7 + (Date.now() % 10000)) % 10000).padStart(4, '0')
+}
+
+export async function copyText(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch (_) { /* fallback below */ }
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.style.cssText = 'position:fixed;left:-9999px;top:0'
+  document.body.appendChild(ta)
+  ta.select()
+  const ok = document.execCommand('copy')
+  document.body.removeChild(ta)
+  return ok
+}
+
+export function showToast(msg) {
+  let el = document.getElementById('td-toast')
+  if (!el) {
+    el = document.createElement('div')
+    el.id = 'td-toast'
+    el.className = 'td-toast'
+    document.body.appendChild(el)
+  }
+  el.textContent = msg
+  el.classList.add('visible')
+  clearTimeout(el._hideTimer)
+  el._hideTimer = setTimeout(() => el.classList.remove('visible'), 2400)
 }

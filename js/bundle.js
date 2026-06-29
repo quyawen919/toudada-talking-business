@@ -31,8 +31,50 @@ function formatReplyDeadline(hours) {
 }
 
 function getConsultUrl() {
-  const base = window.location.href.split('#')[0]
-  return `${base}#consult`
+  const base = window.location.href.split('#')[0].split('?')[0]
+  return `${base}?p=consult`
+}
+
+function getGameShareUrl() {
+  const base = window.location.href.split('#')[0].split('?')[0]
+  return `${base}?p=measure&game=store`
+}
+
+/** 娱乐向分享口令（便于朋友圈/群聊复制） */
+function buildShareCode(result) {
+  const n = result && result.mid ? Math.round(result.mid) : 0
+  return 'TD' + String((n * 7 + (Date.now() % 10000)) % 10000).padStart(4, '0')
+}
+
+async function copyText(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch (_) { /* fallback below */ }
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.style.cssText = 'position:fixed;left:-9999px;top:0'
+  document.body.appendChild(ta)
+  ta.select()
+  const ok = document.execCommand('copy')
+  document.body.removeChild(ta)
+  return ok
+}
+
+function showToast(msg) {
+  let el = document.getElementById('td-toast')
+  if (!el) {
+    el = document.createElement('div')
+    el.id = 'td-toast'
+    el.className = 'td-toast'
+    document.body.appendChild(el)
+  }
+  el.textContent = msg
+  el.classList.add('visible')
+  clearTimeout(el._hideTimer)
+  el._hideTimer = setTimeout(() => el.classList.remove('visible'), 2400)
 }
 
 window.TDUtils = { img, esc, formatReplyDeadline, getConsultUrl };
@@ -1196,6 +1238,7 @@ function createMeasureController(root, { onClose }) {
     playCount: 0,
     result: null,
     shareText: '',
+    shareCode: '',
     highResult: false,
     audioMuted: false
   }
@@ -1335,7 +1378,13 @@ function createMeasureController(root, { onClose }) {
         </div>
         <div class="card sv-share-card">
           <p class="share-label">${state.highResult ? '这估值，值得晒给老板朋友' : '发给老板朋友，看看他的店值多少？'}</p>
+          <p class="share-code">分享口令：<strong>${window.TDUtils.esc(state.shareCode)}</strong></p>
           <p class="share-text">${window.TDUtils.esc(state.shareText)}</p>
+          <div class="share-actions">
+            <button type="button" class="btn-primary" data-action="copy-share">复制分享文案</button>
+            <button type="button" class="btn-secondary" data-action="copy-link">复制测测链接</button>
+          </div>
+          <p class="share-hint">粘贴到微信聊天 / 朋友圈即可；朋友打开链接就能玩</p>
         </div>
         <div class="sv-result-actions">
           <button type="button" class="btn-primary" data-action="replay">换选择重新测算</button>
@@ -1371,6 +1420,16 @@ function createMeasureController(root, { onClose }) {
       render()
     })
     root.querySelector('[data-action="close"]')?.addEventListener('click', () => onClose())
+    root.querySelector('[data-action="copy-share"]')?.addEventListener('click', async () => {
+      const link = getGameShareUrl()
+      const msg = `${state.shareText}\n口令：${state.shareCode}\n${link}`
+      const ok = await copyText(msg)
+      showToast(ok ? '已复制，去微信粘贴发送吧' : '复制失败，请长按文案手动复制')
+    })
+    root.querySelector('[data-action="copy-link"]')?.addEventListener('click', async () => {
+      const ok = await copyText(getGameShareUrl())
+      showToast(ok ? '链接已复制' : '复制失败，请手动复制链接')
+    })
     root.querySelector('[data-action="replay"]')?.addEventListener('click', () => {
       clearTimers()
       answers = []
@@ -1457,6 +1516,7 @@ function createMeasureController(root, { onClose }) {
     state.playCount += 1
     state.result = result
     state.shareText = window.TDStoreEngine.buildShareText(state.shopType, result)
+    state.shareCode = buildShareCode(result)
     state.highResult = window.TDStoreEngine.isHighResult(state.shopType, result)
     state.phase = 'result'
     render()
@@ -1522,14 +1582,21 @@ function ipGridItems() {
 }
 
 function route() {
+  const params = new URLSearchParams(location.search)
+  const fromQuery = params.get('p')
+  if (fromQuery) {
+    const sub = params.get('sub') || params.get('game') || ''
+    return { page: fromQuery, sub }
+  }
   const hash = location.hash.replace(/^#/, '') || 'home'
   const parts = hash.split('/')
   return { page: parts[0] || 'home', sub: parts[1] || '' }
 }
 
 function setActiveNav(page) {
+  const navPage = page === 'consult' || page === 'questionnaire' ? 'consult' : page
   document.querySelectorAll('[data-nav]').forEach((el) => {
-    el.classList.toggle('active', el.dataset.nav === page)
+    el.classList.toggle('active', el.dataset.nav === navPage)
   })
 }
 
@@ -1537,13 +1604,14 @@ function renderQrTargets() {
   const url = window.TDUtils.getConsultUrl()
   const urlEl = document.getElementById('qr-url')
   if (urlEl) urlEl.textContent = url
-  const canvas = document.getElementById('qr-canvas')
-  if (canvas && window.QRCode) {
-    QRCode.toCanvas(canvas, url, { width: 200, margin: 2, color: { dark: '#1a3668' } }).catch(() => {})
+  const draw = (canvas, size) => {
+    if (!canvas || !window.QRCode) return
+    QRCode.toCanvas(canvas, url, { width: size, margin: 2, color: { dark: '#1a3668' } }).catch(() => {
+      canvas.insertAdjacentHTML('afterend', `<p class="qr-fallback">二维码加载失败，请复制链接：<a href="${url}">${url}</a></p>`)
+    })
   }
-  document.querySelectorAll('[data-qr-canvas]').forEach((c) => {
-    if (window.QRCode) QRCode.toCanvas(c, url, { width: 180, margin: 2, color: { dark: '#1a3668' } }).catch(() => {})
-  })
+  draw(document.getElementById('qr-canvas'), 200)
+  document.querySelectorAll('[data-qr-canvas]').forEach((c) => draw(c, 180))
   document.querySelectorAll('[data-qr-url]').forEach((el) => {
     el.textContent = url
   })
