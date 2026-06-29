@@ -219,6 +219,41 @@ img { max-width: 100%; display: block; }
 .case-spotlight-label { font-size: 12px; color: var(--color-coral); font-weight: 700; margin-bottom: 8px; }
 .case-spotlight-title { font-size: 18px; font-weight: 800; color: var(--color-primary); margin: 0 0 6px; }
 
+.page-wrap { max-width: var(--max-width); margin: 0 auto; }
+
+.share-page {
+  max-width: 480px;
+  margin: 0 auto;
+  text-align: center;
+  padding: 28px 24px;
+}
+
+.share-page-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-mint);
+  background: rgba(61, 170, 140, 0.12);
+  padding: 4px 12px;
+  border-radius: 999px;
+  margin: 0 0 12px;
+}
+
+.share-page-title { font-size: 22px; font-weight: 800; color: var(--color-primary); margin: 0 0 10px; }
+.share-page-desc { font-size: 15px; color: var(--color-text-secondary); margin: 0 0 12px; line-height: 1.55; }
+.share-page-tip { font-size: 13px; color: var(--color-text-muted); margin: 0 0 20px; line-height: 1.6; }
+.share-page-url { font-size: 11px; color: var(--color-text-muted); word-break: break-all; margin: 12px 0 16px; }
+.share-page-go { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.share-page-back { display: inline-block; margin-top: 20px; font-size: 13px; color: var(--color-text-muted); text-decoration: none; }
+.share-invite-link {
+  display: block;
+  margin-top: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
 .two-col { display: grid; grid-template-columns: 1fr 320px; gap: 28px; align-items: start; }
 @media (max-width: 960px) { .two-col { grid-template-columns: 1fr; } }
 
@@ -257,6 +292,11 @@ img { max-width: 100%; display: block; }
 .qr-float-title { font-size: 14px; font-weight: 700; margin: 0 0 12px; color: var(--color-primary); }
 .qr-float-url { font-size: 10px; color: var(--color-text-muted); word-break: break-all; }
 .qr-float-tip { font-size: 11px; color: var(--color-text-muted); margin: 8px 0 0; }
+.qr-float-open {
+  display: block; margin-top: 10px; font-size: 12px; font-weight: 700;
+  color: var(--color-primary); text-decoration: none; text-align: center;
+}
+.measure-teaser { cursor: pointer; }
 
 .page-hero-band {
   position: relative;

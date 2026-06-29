@@ -28,7 +28,7 @@ import {
   buildSummary
 } from './constants.js'
 import { createMeasureController } from './measure.js'
-import { img, esc, formatReplyDeadline, getConsultUrl, getGameShareUrl, buildShareCode, copyText, showToast } from './utils.js'
+import { img, esc, formatReplyDeadline, getConsultUrl, getHomeShareUrl, getGameShareUrl, getSharePageUrl, buildShareCode, copyText, showToast, onId, onSel } from './utils.js'
 
 const LEADS_KEY = 'toudada_web_leads'
 const app = document.getElementById('app')
@@ -90,55 +90,67 @@ function setActiveNav(page) {
   })
 }
 
-function renderQrTargets() {
-  const url = getConsultUrl()
-  const urlEl = document.getElementById('qr-url')
-  if (urlEl) urlEl.textContent = url
-  const draw = (canvas, size) => {
-    if (!canvas) return
-    const showLinkFallback = () => {
-      if (canvas.dataset.fallback) return
-      canvas.dataset.fallback = '1'
-      canvas.insertAdjacentHTML('afterend', `<p class="qr-fallback"><a href="${url}">${url}</a></p>`)
-    }
-    if (window.QRCode) {
-      QRCode.toCanvas(canvas, url, { width: size, margin: 2, color: { dark: '#1a3668' } }).catch(showLinkFallback)
-    } else {
-      showLinkFallback()
-    }
+function renderSharePage() {
+  const params = new URLSearchParams(location.search)
+  const type = params.get('type') || 'home'
+  const targets = {
+    home: { title: '邀请朋友来逛逛', desc: '朋友点开链接，进入头大大谈经营首页', url: getHomeShareUrl(), cta: '进入首页', go: '?p=home' },
+    game: { title: '邀请朋友来测一测', desc: '朋友点开链接，直接玩门店估值小游戏', url: getGameShareUrl(), cta: '我也测一测', go: '?p=measure&game=store' },
+    consult: { title: '邀请朋友来咨询', desc: '朋友点开链接，填写 30 秒咨询问卷', url: getConsultUrl(), cta: '我要咨询', go: '?p=consult&sub=start' }
   }
-  draw(document.getElementById('qr-canvas'), 200)
-  document.querySelectorAll('[data-qr-canvas]').forEach((c) => draw(c, 180))
-  document.querySelectorAll('[data-qr-url]').forEach((el) => {
-    el.textContent = url
+  const t = targets[type] || targets.home
+
+  app.innerHTML = `
+    <div class="share-page card">
+      <p class="share-page-badge">转发 / 分享专用页</p>
+      <h1 class="share-page-title">${esc(t.title)}</h1>
+      <p class="share-page-desc">${esc(t.desc)}</p>
+      <p class="share-page-tip">你可以把<strong>链接</strong>发给微信好友，或保存下方<strong>二维码</strong>发朋友圈 / 打印物料</p>
+      <canvas id="share-qr-canvas" width="220" height="220"></canvas>
+      <p class="share-page-url" id="share-page-url">${esc(t.url)}</p>
+      <div class="share-actions">
+        <button type="button" class="btn-primary" id="share-copy-link">复制链接发给朋友</button>
+        <a href="${esc(t.go)}" class="btn-secondary share-page-go">${esc(t.cta)}</a>
+      </div>
+      <a href="?p=home" class="share-page-back">← 返回首页</a>
+    </div>`
+
+  const canvas = document.getElementById('share-qr-canvas')
+  if (canvas && window.QRCode) {
+    QRCode.toCanvas(canvas, t.url, { width: 220, margin: 2, color: { dark: '#1a3668' } }).catch(() => {})
+  }
+
+  onId('share-copy-link', 'click', async () => {
+    const ok = await copyText(t.url)
+    showToast(ok ? '链接已复制，去微信粘贴发送吧' : '复制失败，请长按链接手动复制')
   })
 }
 
 function bindSiteNav() {
-  document.querySelectorAll('a[href^="#"]').forEach((link) => {
-    link.addEventListener('click', (e) => {
-      const href = link.getAttribute('href')
-      if (!href || href === '#') return
-      e.preventDefault()
-      const target = href.slice(1)
-      if (location.hash.replace(/^#/, '') !== target) {
-        location.hash = target
-      } else {
-        render()
-      }
-    })
-  })
-}
+  function goHash(target) {
+    location.hash = target || 'home'
+    render()
+  }
 
-function qrCardHtml() {
-  return `
-    <div class="card qr-card">
-      <h2 class="qr-card-title">扫码给我咨询</h2>
-      <p class="qr-card-desc">微信扫一扫下方二维码，打开网页版咨询页。30 秒问卷 · 24 小时内联系。</p>
-      <canvas data-qr-canvas width="180" height="180"></canvas>
-      <p class="qr-card-url" data-qr-url></p>
-      <a href="#consult/start" class="btn-primary" style="width:100%">或直接开始填写</a>
-    </div>`
+  function handleNavClick(e) {
+    const link = e.target.closest('a[href^="#"], a[href^="?"]')
+    if (!link) return
+    const href = link.getAttribute('href')
+    if (!href || href === '#') return
+    if (href.startsWith('?')) return
+    e.preventDefault()
+    goHash(href.slice(1))
+  }
+
+  document.addEventListener('click', handleNavClick, false)
+  document.addEventListener('touchend', handleNavClick, false)
+
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-go]')
+    if (!el) return
+    e.preventDefault()
+    goHash(el.getAttribute('data-go'))
+  }, false)
 }
 
 function renderHome() {
@@ -176,7 +188,7 @@ function renderHome() {
   const featured = SERVICE_CASES[0]
 
   app.innerHTML = `
-    <div class="two-col">
+    <div class="page-wrap">
       <div>
         <section class="hero-banner">
           <div class="hero-banner-deco"></div>
@@ -184,7 +196,7 @@ function renderHome() {
           <h1 class="hero-title">${esc(HOME_COMMUNITY.communitySlogan)}</h1>
           <p class="hero-slogan">${esc(BRAND.slogan)}</p>
           <p class="hero-tagline">${esc(BRAND.tagline)} · ${esc(BRAND.scope)}</p>
-          <a href="#consult/start" class="btn-primary hero-cta">${esc(HOME_COMMUNITY.ctaText)} →</a>
+          <a href="?p=consult&sub=start" class="btn-primary hero-cta">${esc(HOME_COMMUNITY.ctaText)} →</a>
           <div class="avatar-row">
             ${['#E85D4C', '#F5A623', '#3DAA8C', '#1A3668'].map((c) => `<span class="avatar-dot" style="background:${c}"></span>`).join('')}
             <span>${esc(HOME_COMMUNITY.memberCount)}</span>
@@ -192,19 +204,19 @@ function renderHome() {
         </section>
 
         <section class="home-quick-nav" aria-label="快捷入口">
-          <a href="#consult" class="home-quick-card home-quick-card--consult">
+          <a href="?p=consult" class="home-quick-card home-quick-card--consult">
             <span class="home-quick-icon">💬</span>
             <span class="home-quick-title">咨询</span>
             <span class="home-quick-desc">30秒问卷 · 24小时内联系</span>
           </a>
-          <a href="#about" class="home-quick-card home-quick-card--about">
+          <a href="?p=about" class="home-quick-card home-quick-card--about">
             <span class="home-quick-icon">👤</span>
             <span class="home-quick-title">本人</span>
             <span class="home-quick-desc">了解头大大 · 资历与案例</span>
           </a>
         </section>
 
-        <section class="measure-teaser" id="open-measure">
+        <section class="measure-teaser" id="open-measure" data-go="measure" role="button" tabindex="0">
           <span class="measure-teaser-badge">纯属娱乐</span>
           <h2 class="measure-teaser-title">头大大 · 测测</h2>
           <p class="measure-teaser-desc">4 款测评 · 门店估值已可测</p>
@@ -236,20 +248,17 @@ function renderHome() {
           <p class="text-muted">${esc(featured.progress)}</p>
         </section>
       </div>
-      ${qrCardHtml()}
     </div>`
 
-  document.getElementById('open-measure')?.addEventListener('click', openMeasureModal)
+  onId('open-measure', 'click', openMeasureModal)
   app.querySelectorAll('[data-topic-index]').forEach((el) => {
     el.addEventListener('click', () => openTopicModal(Number(el.dataset.topicIndex)))
   })
   app.querySelectorAll('[data-ip-key]').forEach((el) => {
     el.addEventListener('click', () => openIpModal(el.dataset.ipKey))
   })
-  app.querySelector('[data-action="topic-submit"]')?.addEventListener('click', openTopicSubmitModal)
-  app.querySelector('[data-nav="about"]')?.addEventListener('click', () => {
-    location.hash = 'about'
-  })
+  onSel('[data-action="topic-submit"]', 'click', openTopicSubmitModal, app)
+  onSel('[data-nav="about"]', 'click', () => { location.hash = 'about' }, app)
 }
 
 function renderConsult() {
@@ -281,7 +290,7 @@ function renderConsult() {
   }).join('')
 
   app.innerHTML = `
-    <div class="two-col">
+    <div class="page-wrap">
       <div>
         ${hasDraft ? `<div class="card" style="margin-bottom:16px;cursor:pointer" id="continue-draft"><strong>继续上次咨询</strong><p class="text-muted" style="margin:8px 0 0">点击继续填写</p></div>` : ''}
         <section class="page-hero-band">
@@ -301,13 +310,10 @@ function renderConsult() {
           ${products}
         </section>
       </div>
-      ${qrCardHtml()}
     </div>`
 
-  document.getElementById('continue-draft')?.addEventListener('click', () => {
-    location.hash = 'consult/start'
-  })
-  document.getElementById('continue-draft-btn')?.addEventListener('click', (e) => {
+  onId('continue-draft', 'click', () => { location.hash = 'consult/start' })
+  onId('continue-draft-btn', 'click', (e) => {
     e.preventDefault()
     location.hash = 'consult/start'
   })
@@ -443,7 +449,7 @@ function renderBasicInfo() {
     })
   })
 
-  document.getElementById('basic-prev')?.addEventListener('click', () => {
+  onId('basic-prev', 'click', () => {
     if (step === 1) location.hash = 'consult/start'
     else {
       draft.basicStep = 1
@@ -451,23 +457,23 @@ function renderBasicInfo() {
     }
   })
 
-  document.getElementById('city')?.addEventListener('input', (e) => {
+  onId('city', 'input', (e) => {
     draft.basic.city = e.target.value
   })
-  document.getElementById('phone')?.addEventListener('input', (e) => {
+  onId('phone', 'input', (e) => {
     draft.basic.phone = e.target.value
   })
-  document.getElementById('privacy-toggle')?.addEventListener('click', (e) => {
+  onId('privacy-toggle', 'click', (e) => {
     if (e.target.id === 'open-privacy') return
     draft.basic.privacyAgreed = !draft.basic.privacyAgreed
     renderBasicInfo()
   })
-  document.getElementById('open-privacy')?.addEventListener('click', (e) => {
+  onId('open-privacy', 'click', (e) => {
     e.stopPropagation()
     openPrivacyModal()
   })
 
-  document.getElementById('basic-next')?.addEventListener('click', () => {
+  onId('basic-next', 'click', () => {
     const b = draft.basic
     if (step === 1) {
       if (!b.industryType || !b.investmentStatus || !b.investmentRange) {
@@ -479,7 +485,7 @@ function renderBasicInfo() {
       return
     }
     const phone = (b.phone || '').trim()
-    if (!b.city?.trim() || !/^1\d{10}$/.test(phone)) {
+    if (!(b.city && b.city.trim()) || !/^1\d{10}$/.test(phone)) {
       alert('请填写城市与有效手机号')
       return
     }
@@ -590,7 +596,7 @@ function renderAbout() {
   ).join('')
 
   app.innerHTML = `
-    <div class="two-col">
+    <div class="page-wrap">
       <div>
         <section class="about-hero">
           <img src="${img('/images/portraits/portrait-main.jpg')}" alt="${esc(BRAND.name)}" />
@@ -626,7 +632,6 @@ function renderAbout() {
         <div class="card"><p class="text-muted" style="font-size:13px;line-height:1.65">${esc(COMPLIANCE)}</p></div>
         <div class="action-row"><a href="#consult/start" class="btn-primary">${esc(HOME_COMMUNITY.ctaText)} →</a></div>
       </div>
-      ${qrCardHtml()}
     </div>`
 }
 
@@ -640,7 +645,7 @@ function openMeasureModal(initialGame) {
       </div>
     </div>`
   const root = document.getElementById('measure-root')
-  measureController?.destroy()
+  if (measureController) measureController.destroy()
   measureController = createMeasureController(root, {
     onClose: closeModal
   })
@@ -726,7 +731,7 @@ function openTopicSubmitModal() {
       </div>
     </div>`
   bindModalClose()
-  document.getElementById('submit-topic')?.addEventListener('click', () => {
+  onId('submit-topic', 'click', () => {
     alert('投稿已收到（网页演示版），感谢分享！')
     closeModal()
   })
@@ -762,7 +767,7 @@ function bindModalClose() {
 }
 
 function closeModal() {
-  measureController?.destroy()
+  if (measureController) measureController.destroy()
   measureController = null
   modalRoot.innerHTML = ''
 }
@@ -774,12 +779,13 @@ function render() {
   if (page === 'home' || page === '') renderHome()
   else if (page === 'consult') renderConsult()
   else if (page === 'about') renderAbout()
+  else if (page === 'share') renderSharePage()
   else if (page === 'measure') {
     renderHome()
     setTimeout(() => openMeasureModal(sub === 'store' ? 'store' : null), 0)
+  } else if (page === 'questionnaire') {
+    location.hash = 'consult/start'
   } else renderHome()
-
-  renderQrTargets()
 }
 
 window.addEventListener('hashchange', render)
@@ -791,14 +797,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (logo && window.__SITE_IMG_BASE) {
     logo.src = window.__SITE_IMG_BASE + '/brand/toudada-talk-business-logo.png'
   }
-})
-
-document.getElementById('qr-toggle')?.addEventListener('click', () => {
-  const panel = document.getElementById('qr-panel')
-  const open = panel.hidden
-  panel.hidden = !open
-  document.getElementById('qr-toggle').setAttribute('aria-expanded', String(open))
-  if (open) renderQrTargets()
 })
 
 try {

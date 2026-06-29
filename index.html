@@ -22,16 +22,16 @@
   </noscript>
   <header class="site-header">
     <div class="site-header-inner">
-      <a href="#home" class="site-logo" data-nav="home">
+      <a href="?p=home" class="site-logo" data-nav="home">
         <img src="images/brand/toudada-talk-business-logo.png" alt="头大大谈经营" class="site-logo-img" onerror="this.style.display='none'" />
         <span class="site-logo-text">头大大谈经营</span>
       </a>
       <nav class="site-nav" aria-label="主导航">
-        <a href="#home" class="site-nav-link" data-nav="home">首页</a>
-        <a href="#consult" class="site-nav-link" data-nav="consult">咨询</a>
-        <a href="#about" class="site-nav-link" data-nav="about">本人</a>
+        <a href="?p=home" class="site-nav-link" data-nav="home">首页</a>
+        <a href="?p=consult" class="site-nav-link" data-nav="consult">咨询</a>
+        <a href="?p=about" class="site-nav-link" data-nav="about">本人</a>
       </nav>
-      <a href="#consult/start" class="btn-primary site-header-cta">立即咨询</a>
+      <a href="?p=consult&sub=start" class="btn-primary site-header-cta">立即咨询</a>
     </div>
   </header>
 
@@ -42,31 +42,21 @@
     </div>
   </main>
 
-  <aside class="qr-float" id="qr-float" aria-label="扫码咨询">
-    <button type="button" class="qr-float-toggle" id="qr-toggle" aria-expanded="false">扫码咨询</button>
-    <div class="qr-float-panel" id="qr-panel" hidden>
-      <p class="qr-float-title">微信扫一扫 · 给我留言咨询</p>
-      <canvas id="qr-canvas" width="200" height="200"></canvas>
-      <p class="qr-float-url" id="qr-url"></p>
-      <p class="qr-float-tip">打开后直达咨询页 · 30秒问卷 · 24小时内联系</p>
-    </div>
-  </aside>
-
   <footer class="site-footer">
     <p>头大大谈经营 · 个人分享与咨询预约 · 纯属娱乐测测不构成投资建议</p>
     <p class="text-muted">不承诺保证盈利 · 不提供刷单买评</p>
   </footer>
 
   <nav class="mobile-tabbar" aria-label="底部导航">
-    <a href="#home" class="mobile-tab" data-nav="home">
+    <a href="?p=home" class="mobile-tab" data-nav="home">
       <span class="mobile-tab-icon">🏠</span>
       <span class="mobile-tab-label">首页</span>
     </a>
-    <a href="#consult" class="mobile-tab" data-nav="consult">
+    <a href="?p=consult" class="mobile-tab" data-nav="consult">
       <span class="mobile-tab-icon">💬</span>
       <span class="mobile-tab-label">咨询</span>
     </a>
-    <a href="#about" class="mobile-tab" data-nav="about">
+    <a href="?p=about" class="mobile-tab" data-nav="about">
       <span class="mobile-tab-icon">👤</span>
       <span class="mobile-tab-label">本人</span>
     </a>

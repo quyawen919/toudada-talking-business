@@ -35,9 +35,20 @@ export function getConsultUrl() {
   return `${base}?p=consult`
 }
 
+export function getHomeShareUrl() {
+  const base = window.location.href.split('#')[0].split('?')[0]
+  return `${base}?p=home`
+}
+
 export function getGameShareUrl() {
   const base = window.location.href.split('#')[0].split('?')[0]
   return `${base}?p=measure&game=store`
+}
+
+export function getSharePageUrl(type) {
+  const base = window.location.href.split('#')[0].split('?')[0]
+  const t = type || 'home'
+  return `${base}?p=share&type=${t}`
 }
 
 /** 娱乐向分享口令（便于朋友圈/群聊复制） */
@@ -48,7 +59,7 @@ export function buildShareCode(result) {
 
 export async function copyText(text) {
   try {
-    if (navigator.clipboard?.writeText) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(text)
       return true
     }
@@ -75,4 +86,14 @@ export function showToast(msg) {
   el.classList.add('visible')
   clearTimeout(el._hideTimer)
   el._hideTimer = setTimeout(() => el.classList.remove('visible'), 2400)
+}
+
+export function onId(id, event, fn) {
+  const el = document.getElementById(id)
+  if (el) el.addEventListener(event, fn)
+}
+
+export function onSel(sel, event, fn, root) {
+  const el = (root || document).querySelector(sel)
+  if (el) el.addEventListener(event, fn)
 }

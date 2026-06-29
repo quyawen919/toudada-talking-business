@@ -1,7 +1,7 @@
 import { ROUNDS, GUIDE_PATHS, ROUND_DECO, CELL_BGS } from './store-valuator-data.js'
 import { calcValuation, isHighResult, buildShareText } from './store-valuator-engine.js'
 import { GAME_CATALOG, HUB_META } from './game-catalog.js'
-import { esc, buildShareCode, copyText, getGameShareUrl, showToast } from './utils.js'
+import { esc, buildShareCode, copyText, getGameShareUrl, showToast, onSel } from './utils.js'
 
 const GUIDE_MS = 520
 const SHOP_TYPES = [
@@ -162,14 +162,14 @@ export function createMeasureController(root, { onClose }) {
           <div class="bar-list">${bars}</div>
         </div>
         <div class="card sv-share-card">
-          <p class="share-label">${state.highResult ? '这估值，值得晒给老板朋友' : '发给老板朋友，看看他的店值多少？'}</p>
-          <p class="share-code">分享口令：<strong>${esc(state.shareCode)}</strong></p>
+          <p class="share-label">${state.highResult ? '这估值，值得发给老板朋友' : '发给老板朋友，看看他的店值多少？'}</p>
           <p class="share-text">${esc(state.shareText)}</p>
           <div class="share-actions">
-            <button type="button" class="btn-primary" data-action="copy-share">复制分享文案</button>
-            <button type="button" class="btn-secondary" data-action="copy-link">复制测测链接</button>
+            <button type="button" class="btn-primary" data-action="copy-share">复制文案 + 链接</button>
+            <button type="button" class="btn-secondary" data-action="copy-link">只复制测测链接</button>
           </div>
-          <p class="share-hint">粘贴到微信聊天 / 朋友圈即可；朋友打开链接就能玩</p>
+          <a href="?p=share&type=game" class="share-invite-link">需要二维码？打开邀请页（可发朋友圈）</a>
+          <p class="share-hint">朋友<strong>点开链接</strong>就能玩，不用扫页面上的码</p>
         </div>
         <div class="sv-result-actions">
           <button type="button" class="btn-primary" data-action="replay">换选择重新测算</button>
@@ -197,25 +197,25 @@ export function createMeasureController(root, { onClose }) {
   }
 
   function bindGame() {
-    root.querySelector('[data-action="back-list"]')?.addEventListener('click', () => {
+    onSel('[data-action="back-list"]', 'click', () => {
       clearTimers()
       state.view = 'list'
       state.phase = 'intro'
       state.shopType = ''
       render()
-    })
-    root.querySelector('[data-action="close"]')?.addEventListener('click', () => onClose())
-    root.querySelector('[data-action="copy-share"]')?.addEventListener('click', async () => {
+    }, root)
+    onSel('[data-action="close"]', 'click', () => onClose(), root)
+    onSel('[data-action="copy-share"]', 'click', async () => {
       const link = getGameShareUrl()
-      const msg = `${state.shareText}\n口令：${state.shareCode}\n${link}`
+      const msg = `${state.shareText}\n${link}`
       const ok = await copyText(msg)
       showToast(ok ? '已复制，去微信粘贴发送吧' : '复制失败，请长按文案手动复制')
-    })
-    root.querySelector('[data-action="copy-link"]')?.addEventListener('click', async () => {
+    }, root)
+    onSel('[data-action="copy-link"]', 'click', async () => {
       const ok = await copyText(getGameShareUrl())
       showToast(ok ? '链接已复制' : '复制失败，请手动复制链接')
-    })
-    root.querySelector('[data-action="replay"]')?.addEventListener('click', () => {
+    }, root)
+    onSel('[data-action="replay"]', 'click', () => {
       clearTimers()
       answers = []
       state.phase = 'intro'
@@ -223,19 +223,19 @@ export function createMeasureController(root, { onClose }) {
       state.roundIndex = 0
       state.result = null
       render()
-    })
+    }, root)
     root.querySelectorAll('[data-type]').forEach((btn) => {
       btn.addEventListener('click', () => {
         state.shopType = btn.dataset.type
         render()
       })
     })
-    root.querySelector('[data-action="start"]')?.addEventListener('click', () => {
+    onSel('[data-action="start"]', 'click', () => {
       if (!state.shopType) return
       answers = []
       state.roundIndex = 0
       enterRound()
-    })
+    }, root)
     root.querySelectorAll('[data-index]').forEach((cell) => {
       cell.addEventListener('click', () => pickCell(Number(cell.dataset.index), false))
     })
@@ -261,7 +261,7 @@ export function createMeasureController(root, { onClose }) {
       if (cell) {
         root.querySelectorAll('.sv-cell').forEach((c) => c.classList.remove('guide'))
         const next = root.querySelector(`[data-index="${state.guideCell}"]`)
-        next?.classList.add('guide')
+        if (next) next.classList.add('guide')
       }
     }, GUIDE_MS)
     timer = setInterval(() => {

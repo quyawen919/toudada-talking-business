@@ -43,9 +43,20 @@ function getConsultUrl() {
   return `${base}?p=consult`
 }
 
+function getHomeShareUrl() {
+  const base = window.location.href.split('#')[0].split('?')[0]
+  return `${base}?p=home`
+}
+
 function getGameShareUrl() {
   const base = window.location.href.split('#')[0].split('?')[0]
   return `${base}?p=measure&game=store`
+}
+
+function getSharePageUrl(type) {
+  const base = window.location.href.split('#')[0].split('?')[0]
+  const t = type || 'home'
+  return `${base}?p=share&type=${t}`
 }
 
 /** 娱乐向分享口令（便于朋友圈/群聊复制） */
@@ -56,7 +67,7 @@ function buildShareCode(result) {
 
 async function copyText(text) {
   try {
-    if (navigator.clipboard?.writeText) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(text)
       return true
     }
@@ -85,7 +96,17 @@ function showToast(msg) {
   el._hideTimer = setTimeout(() => el.classList.remove('visible'), 2400)
 }
 
-window.TDUtils = { img, esc, formatReplyDeadline, getConsultUrl, getGameShareUrl, buildShareCode, copyText, showToast };
+function onId(id, event, fn) {
+  const el = document.getElementById(id)
+  if (el) el.addEventListener(event, fn)
+}
+
+function onSel(sel, event, fn, root) {
+  const el = (root || document).querySelector(sel)
+  if (el) el.addEventListener(event, fn)
+}
+
+window.TDUtils = { img, esc, formatReplyDeadline, getConsultUrl, getHomeShareUrl, getGameShareUrl, getSharePageUrl, buildShareCode, copyText, showToast, onId, onSel };
 
 /* global bundle: TDContent */
 const BRAND = {
@@ -1385,14 +1406,14 @@ function createMeasureController(root, { onClose }) {
           <div class="bar-list">${bars}</div>
         </div>
         <div class="card sv-share-card">
-          <p class="share-label">${state.highResult ? '这估值，值得晒给老板朋友' : '发给老板朋友，看看他的店值多少？'}</p>
-          <p class="share-code">分享口令：<strong>${window.TDUtils.esc(state.shareCode)}</strong></p>
+          <p class="share-label">${state.highResult ? '这估值，值得发给老板朋友' : '发给老板朋友，看看他的店值多少？'}</p>
           <p class="share-text">${window.TDUtils.esc(state.shareText)}</p>
           <div class="share-actions">
-            <button type="button" class="btn-primary" data-action="copy-share">复制分享文案</button>
-            <button type="button" class="btn-secondary" data-action="copy-link">复制测测链接</button>
+            <button type="button" class="btn-primary" data-action="copy-share">复制文案 + 链接</button>
+            <button type="button" class="btn-secondary" data-action="copy-link">只复制测测链接</button>
           </div>
-          <p class="share-hint">粘贴到微信聊天 / 朋友圈即可；朋友打开链接就能玩</p>
+          <a href="?p=share&type=game" class="share-invite-link">需要二维码？打开邀请页（可发朋友圈）</a>
+          <p class="share-hint">朋友<strong>点开链接</strong>就能玩，不用扫页面上的码</p>
         </div>
         <div class="sv-result-actions">
           <button type="button" class="btn-primary" data-action="replay">换选择重新测算</button>
@@ -1420,25 +1441,25 @@ function createMeasureController(root, { onClose }) {
   }
 
   function bindGame() {
-    root.querySelector('[data-action="back-list"]')?.addEventListener('click', () => {
+    window.TDUtils.onSel('[data-action="back-list"]', 'click', () => {
       clearTimers()
       state.view = 'list'
       state.phase = 'intro'
       state.shopType = ''
       render()
-    })
-    root.querySelector('[data-action="close"]')?.addEventListener('click', () => onClose())
-    root.querySelector('[data-action="copy-share"]')?.addEventListener('click', async () => {
+    }, root)
+    window.TDUtils.onSel('[data-action="close"]', 'click', () => onClose(), root)
+    window.TDUtils.onSel('[data-action="copy-share"]', 'click', async () => {
       const link = window.TDUtils.getGameShareUrl()
-      const msg = `${state.shareText}\n口令：${state.shareCode}\n${link}`
+      const msg = `${state.shareText}\n${link}`
       const ok = await window.TDUtils.copyText(msg)
       window.TDUtils.showToast(ok ? '已复制，去微信粘贴发送吧' : '复制失败，请长按文案手动复制')
-    })
-    root.querySelector('[data-action="copy-link"]')?.addEventListener('click', async () => {
+    }, root)
+    window.TDUtils.onSel('[data-action="copy-link"]', 'click', async () => {
       const ok = await window.TDUtils.copyText(window.TDUtils.getGameShareUrl())
       window.TDUtils.showToast(ok ? '链接已复制' : '复制失败，请手动复制链接')
-    })
-    root.querySelector('[data-action="replay"]')?.addEventListener('click', () => {
+    }, root)
+    window.TDUtils.onSel('[data-action="replay"]', 'click', () => {
       clearTimers()
       answers = []
       state.phase = 'intro'
@@ -1446,19 +1467,19 @@ function createMeasureController(root, { onClose }) {
       state.roundIndex = 0
       state.result = null
       render()
-    })
+    }, root)
     root.querySelectorAll('[data-type]').forEach((btn) => {
       btn.addEventListener('click', () => {
         state.shopType = btn.dataset.type
         render()
       })
     })
-    root.querySelector('[data-action="start"]')?.addEventListener('click', () => {
+    window.TDUtils.onSel('[data-action="start"]', 'click', () => {
       if (!state.shopType) return
       answers = []
       state.roundIndex = 0
       enterRound()
-    })
+    }, root)
     root.querySelectorAll('[data-index]').forEach((cell) => {
       cell.addEventListener('click', () => pickCell(Number(cell.dataset.index), false))
     })
@@ -1484,7 +1505,7 @@ function createMeasureController(root, { onClose }) {
       if (cell) {
         root.querySelectorAll('.sv-cell').forEach((c) => c.classList.remove('guide'))
         const next = root.querySelector(`[data-index="${state.guideCell}"]`)
-        next?.classList.add('guide')
+        if (next) next.classList.add('guide')
       }
     }, GUIDE_MS)
     timer = setInterval(() => {
@@ -1608,55 +1629,67 @@ function setActiveNav(page) {
   })
 }
 
-function renderQrTargets() {
-  const url = window.TDUtils.getConsultUrl()
-  const urlEl = document.getElementById('qr-url')
-  if (urlEl) urlEl.textContent = url
-  const draw = (canvas, size) => {
-    if (!canvas) return
-    const showLinkFallback = () => {
-      if (canvas.dataset.fallback) return
-      canvas.dataset.fallback = '1'
-      canvas.insertAdjacentHTML('afterend', `<p class="qr-fallback"><a href="${url}">${url}</a></p>`)
-    }
-    if (window.QRCode) {
-      QRCode.toCanvas(canvas, url, { width: size, margin: 2, color: { dark: '#1a3668' } }).catch(showLinkFallback)
-    } else {
-      showLinkFallback()
-    }
+function renderSharePage() {
+  const params = new URLSearchParams(location.search)
+  const type = params.get('type') || 'home'
+  const targets = {
+    home: { title: '邀请朋友来逛逛', desc: '朋友点开链接，进入头大大谈经营首页', url: window.TDUtils.getHomeShareUrl(), cta: '进入首页', go: '?p=home' },
+    game: { title: '邀请朋友来测一测', desc: '朋友点开链接，直接玩门店估值小游戏', url: window.TDUtils.getGameShareUrl(), cta: '我也测一测', go: '?p=measure&game=store' },
+    consult: { title: '邀请朋友来咨询', desc: '朋友点开链接，填写 30 秒咨询问卷', url: window.TDUtils.getConsultUrl(), cta: '我要咨询', go: '?p=consult&sub=start' }
   }
-  draw(document.getElementById('qr-canvas'), 200)
-  document.querySelectorAll('[data-qr-canvas]').forEach((c) => draw(c, 180))
-  document.querySelectorAll('[data-qr-url]').forEach((el) => {
-    el.textContent = url
+  const t = targets[type] || targets.home
+
+  app.innerHTML = `
+    <div class="share-page card">
+      <p class="share-page-badge">转发 / 分享专用页</p>
+      <h1 class="share-page-title">${window.TDUtils.esc(t.title)}</h1>
+      <p class="share-page-desc">${window.TDUtils.esc(t.desc)}</p>
+      <p class="share-page-tip">你可以把<strong>链接</strong>发给微信好友，或保存下方<strong>二维码</strong>发朋友圈 / 打印物料</p>
+      <canvas id="share-qr-canvas" width="220" height="220"></canvas>
+      <p class="share-page-url" id="share-page-url">${window.TDUtils.esc(t.url)}</p>
+      <div class="share-actions">
+        <button type="button" class="btn-primary" id="share-copy-link">复制链接发给朋友</button>
+        <a href="${window.TDUtils.esc(t.go)}" class="btn-secondary share-page-go">${window.TDUtils.esc(t.cta)}</a>
+      </div>
+      <a href="?p=home" class="share-page-back">← 返回首页</a>
+    </div>`
+
+  const canvas = document.getElementById('share-qr-canvas')
+  if (canvas && window.QRCode) {
+    QRCode.toCanvas(canvas, t.url, { width: 220, margin: 2, color: { dark: '#1a3668' } }).catch(() => {})
+  }
+
+  window.TDUtils.onId('share-copy-link', 'click', async () => {
+    const ok = await window.TDUtils.copyText(t.url)
+    window.TDUtils.showToast(ok ? '链接已复制，去微信粘贴发送吧' : '复制失败，请长按链接手动复制')
   })
 }
 
 function bindSiteNav() {
-  document.querySelectorAll('a[href^="#"]').forEach((link) => {
-    link.addEventListener('click', (e) => {
-      const href = link.getAttribute('href')
-      if (!href || href === '#') return
-      e.preventDefault()
-      const target = href.slice(1)
-      if (location.hash.replace(/^#/, '') !== target) {
-        location.hash = target
-      } else {
-        render()
-      }
-    })
-  })
-}
+  function goHash(target) {
+    location.hash = target || 'home'
+    render()
+  }
 
-function qrCardHtml() {
-  return `
-    <div class="card qr-card">
-      <h2 class="qr-card-title">扫码给我咨询</h2>
-      <p class="qr-card-desc">微信扫一扫下方二维码，打开网页版咨询页。30 秒问卷 · 24 小时内联系。</p>
-      <canvas data-qr-canvas width="180" height="180"></canvas>
-      <p class="qr-card-url" data-qr-url></p>
-      <a href="#consult/start" class="btn-primary" style="width:100%">或直接开始填写</a>
-    </div>`
+  function handleNavClick(e) {
+    const link = e.target.closest('a[href^="#"], a[href^="?"]')
+    if (!link) return
+    const href = link.getAttribute('href')
+    if (!href || href === '#') return
+    if (href.startsWith('?')) return
+    e.preventDefault()
+    goHash(href.slice(1))
+  }
+
+  document.addEventListener('click', handleNavClick, false)
+  document.addEventListener('touchend', handleNavClick, false)
+
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-go]')
+    if (!el) return
+    e.preventDefault()
+    goHash(el.getAttribute('data-go'))
+  }, false)
 }
 
 function renderHome() {
@@ -1694,7 +1727,7 @@ function renderHome() {
   const featured = window.TDContent.SERVICE_CASES[0]
 
   app.innerHTML = `
-    <div class="two-col">
+    <div class="page-wrap">
       <div>
         <section class="hero-banner">
           <div class="hero-banner-deco"></div>
@@ -1702,7 +1735,7 @@ function renderHome() {
           <h1 class="hero-title">${window.TDUtils.esc(window.TDContent.HOME_COMMUNITY.communitySlogan)}</h1>
           <p class="hero-slogan">${window.TDUtils.esc(window.TDContent.BRAND.slogan)}</p>
           <p class="hero-tagline">${window.TDUtils.esc(window.TDContent.BRAND.tagline)} · ${window.TDUtils.esc(window.TDContent.BRAND.scope)}</p>
-          <a href="#consult/start" class="btn-primary hero-cta">${window.TDUtils.esc(window.TDContent.HOME_COMMUNITY.ctaText)} →</a>
+          <a href="?p=consult&sub=start" class="btn-primary hero-cta">${window.TDUtils.esc(window.TDContent.HOME_COMMUNITY.ctaText)} →</a>
           <div class="avatar-row">
             ${['#E85D4C', '#F5A623', '#3DAA8C', '#1A3668'].map((c) => `<span class="avatar-dot" style="background:${c}"></span>`).join('')}
             <span>${window.TDUtils.esc(window.TDContent.HOME_COMMUNITY.memberCount)}</span>
@@ -1710,19 +1743,19 @@ function renderHome() {
         </section>
 
         <section class="home-quick-nav" aria-label="快捷入口">
-          <a href="#consult" class="home-quick-card home-quick-card--consult">
+          <a href="?p=consult" class="home-quick-card home-quick-card--consult">
             <span class="home-quick-icon">💬</span>
             <span class="home-quick-title">咨询</span>
             <span class="home-quick-desc">30秒问卷 · 24小时内联系</span>
           </a>
-          <a href="#about" class="home-quick-card home-quick-card--about">
+          <a href="?p=about" class="home-quick-card home-quick-card--about">
             <span class="home-quick-icon">👤</span>
             <span class="home-quick-title">本人</span>
             <span class="home-quick-desc">了解头大大 · 资历与案例</span>
           </a>
         </section>
 
-        <section class="measure-teaser" id="open-measure">
+        <section class="measure-teaser" id="open-measure" data-go="measure" role="button" tabindex="0">
           <span class="measure-teaser-badge">纯属娱乐</span>
           <h2 class="measure-teaser-title">头大大 · 测测</h2>
           <p class="measure-teaser-desc">4 款测评 · 门店估值已可测</p>
@@ -1754,20 +1787,17 @@ function renderHome() {
           <p class="text-muted">${window.TDUtils.esc(featured.progress)}</p>
         </section>
       </div>
-      ${qrCardHtml()}
     </div>`
 
-  document.getElementById('open-measure')?.addEventListener('click', openMeasureModal)
+  window.TDUtils.onId('open-measure', 'click', openMeasureModal)
   app.querySelectorAll('[data-topic-index]').forEach((el) => {
     el.addEventListener('click', () => openTopicModal(Number(el.dataset.topicIndex)))
   })
   app.querySelectorAll('[data-ip-key]').forEach((el) => {
     el.addEventListener('click', () => openIpModal(el.dataset.ipKey))
   })
-  app.querySelector('[data-action="topic-submit"]')?.addEventListener('click', openTopicSubmitModal)
-  app.querySelector('[data-nav="about"]')?.addEventListener('click', () => {
-    location.hash = 'about'
-  })
+  window.TDUtils.onSel('[data-action="topic-submit"]', 'click', openTopicSubmitModal, app)
+  window.TDUtils.onSel('[data-nav="about"]', 'click', () => { location.hash = 'about' }, app)
 }
 
 function renderConsult() {
@@ -1799,7 +1829,7 @@ function renderConsult() {
   }).join('')
 
   app.innerHTML = `
-    <div class="two-col">
+    <div class="page-wrap">
       <div>
         ${hasDraft ? `<div class="card" style="margin-bottom:16px;cursor:pointer" id="continue-draft"><strong>继续上次咨询</strong><p class="text-muted" style="margin:8px 0 0">点击继续填写</p></div>` : ''}
         <section class="page-hero-band">
@@ -1819,13 +1849,10 @@ function renderConsult() {
           ${products}
         </section>
       </div>
-      ${qrCardHtml()}
     </div>`
 
-  document.getElementById('continue-draft')?.addEventListener('click', () => {
-    location.hash = 'consult/start'
-  })
-  document.getElementById('continue-draft-btn')?.addEventListener('click', (e) => {
+  window.TDUtils.onId('continue-draft', 'click', () => { location.hash = 'consult/start' })
+  window.TDUtils.onId('continue-draft-btn', 'click', (e) => {
     e.preventDefault()
     location.hash = 'consult/start'
   })
@@ -1961,7 +1988,7 @@ function renderBasicInfo() {
     })
   })
 
-  document.getElementById('basic-prev')?.addEventListener('click', () => {
+  window.TDUtils.onId('basic-prev', 'click', () => {
     if (step === 1) location.hash = 'consult/start'
     else {
       draft.basicStep = 1
@@ -1969,23 +1996,23 @@ function renderBasicInfo() {
     }
   })
 
-  document.getElementById('city')?.addEventListener('input', (e) => {
+  window.TDUtils.onId('city', 'input', (e) => {
     draft.basic.city = e.target.value
   })
-  document.getElementById('phone')?.addEventListener('input', (e) => {
+  window.TDUtils.onId('phone', 'input', (e) => {
     draft.basic.phone = e.target.value
   })
-  document.getElementById('privacy-toggle')?.addEventListener('click', (e) => {
+  window.TDUtils.onId('privacy-toggle', 'click', (e) => {
     if (e.target.id === 'open-privacy') return
     draft.basic.privacyAgreed = !draft.basic.privacyAgreed
     renderBasicInfo()
   })
-  document.getElementById('open-privacy')?.addEventListener('click', (e) => {
+  window.TDUtils.onId('open-privacy', 'click', (e) => {
     e.stopPropagation()
     openPrivacyModal()
   })
 
-  document.getElementById('basic-next')?.addEventListener('click', () => {
+  window.TDUtils.onId('basic-next', 'click', () => {
     const b = draft.basic
     if (step === 1) {
       if (!b.industryType || !b.investmentStatus || !b.investmentRange) {
@@ -1997,7 +2024,7 @@ function renderBasicInfo() {
       return
     }
     const phone = (b.phone || '').trim()
-    if (!b.city?.trim() || !/^1\d{10}$/.test(phone)) {
+    if (!(b.city && b.city.trim()) || !/^1\d{10}$/.test(phone)) {
       alert('请填写城市与有效手机号')
       return
     }
@@ -2108,7 +2135,7 @@ function renderAbout() {
   ).join('')
 
   app.innerHTML = `
-    <div class="two-col">
+    <div class="page-wrap">
       <div>
         <section class="about-hero">
           <img src="${window.TDUtils.img('/images/portraits/portrait-main.jpg')}" alt="${window.TDUtils.esc(window.TDContent.BRAND.name)}" />
@@ -2144,7 +2171,6 @@ function renderAbout() {
         <div class="card"><p class="text-muted" style="font-size:13px;line-height:1.65">${window.TDUtils.esc(window.TDContent.COMPLIANCE)}</p></div>
         <div class="action-row"><a href="#consult/start" class="btn-primary">${window.TDUtils.esc(window.TDContent.HOME_COMMUNITY.ctaText)} →</a></div>
       </div>
-      ${qrCardHtml()}
     </div>`
 }
 
@@ -2158,7 +2184,7 @@ function openMeasureModal(initialGame) {
       </div>
     </div>`
   const root = document.getElementById('measure-root')
-  measureController?.destroy()
+  if (measureController) measureController.destroy()
   measureController = window.createMeasureController(root, {
     onClose: closeModal
   })
@@ -2244,7 +2270,7 @@ function openTopicSubmitModal() {
       </div>
     </div>`
   bindModalClose()
-  document.getElementById('submit-topic')?.addEventListener('click', () => {
+  window.TDUtils.onId('submit-topic', 'click', () => {
     alert('投稿已收到（网页演示版），感谢分享！')
     closeModal()
   })
@@ -2280,7 +2306,7 @@ function bindModalClose() {
 }
 
 function closeModal() {
-  measureController?.destroy()
+  if (measureController) measureController.destroy()
   measureController = null
   modalRoot.innerHTML = ''
 }
@@ -2292,12 +2318,13 @@ function render() {
   if (page === 'home' || page === '') renderHome()
   else if (page === 'consult') renderConsult()
   else if (page === 'about') renderAbout()
+  else if (page === 'share') renderSharePage()
   else if (page === 'measure') {
     renderHome()
     setTimeout(() => openMeasureModal(sub === 'store' ? 'store' : null), 0)
+  } else if (page === 'questionnaire') {
+    location.hash = 'consult/start'
   } else renderHome()
-
-  renderQrTargets()
 }
 
 window.addEventListener('hashchange', render)
@@ -2309,14 +2336,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (logo && window.__SITE_IMG_BASE) {
     logo.src = window.__SITE_IMG_BASE + '/brand/toudada-talk-business-logo.png'
   }
-})
-
-document.getElementById('qr-toggle')?.addEventListener('click', () => {
-  const panel = document.getElementById('qr-panel')
-  const open = panel.hidden
-  panel.hidden = !open
-  document.getElementById('qr-toggle').setAttribute('aria-expanded', String(open))
-  if (open) renderQrTargets()
 })
 
 try {
