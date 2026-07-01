@@ -38,48 +38,89 @@ function formatReplyDeadline(hours) {
   return `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+function getSiteBase() {
+  return window.location.href.split('#')[0].split('?')[0]
+}
+
+/** 微信里用 ?p= 比 # 更可靠 */
+function pageUrl(page, sub) {
+  const base = getSiteBase()
+  const p = page || 'home'
+  if (p === 'home' && !sub) return `${base}?p=home`
+  if (p === 'measure' && sub === 'store') return `${base}?p=measure&game=store`
+  if (sub) return `${base}?p=${encodeURIComponent(p)}&sub=${encodeURIComponent(sub)}`
+  return `${base}?p=${encodeURIComponent(p)}`
+}
+
+function goPage(page, sub) {
+  window.location.href = pageUrl(page, sub)
+}
+
+function parsePageQuery() {
+  const out = {}
+  const search = window.location.search || ''
+  if (!search) return out
+  if (typeof URLSearchParams !== 'undefined') {
+    const params = new URLSearchParams(search)
+    params.forEach((v, k) => {
+      out[k] = v
+    })
+    return out
+  }
+  search.replace(/^\?/, '').split('&').forEach((pair) => {
+    if (!pair) return
+    const i = pair.indexOf('=')
+    const k = decodeURIComponent(i >= 0 ? pair.slice(0, i) : pair)
+    const v = decodeURIComponent(i >= 0 ? pair.slice(i + 1) : '')
+    out[k] = v
+  })
+  return out
+}
+
 function getConsultUrl() {
-  const base = window.location.href.split('#')[0].split('?')[0]
-  return `${base}?p=consult`
+  return pageUrl('consult')
 }
 
 function getHomeShareUrl() {
-  const base = window.location.href.split('#')[0].split('?')[0]
-  return `${base}?p=home`
+  return pageUrl('home')
 }
 
 function getGameShareUrl() {
-  const base = window.location.href.split('#')[0].split('?')[0]
-  return `${base}?p=measure&game=store`
+  return pageUrl('measure', 'store')
 }
 
 function getSharePageUrl(type) {
-  const base = window.location.href.split('#')[0].split('?')[0]
   const t = type || 'home'
-  return `${base}?p=share&type=${t}`
+  return `${getSiteBase()}?p=share&type=${encodeURIComponent(t)}`
 }
 
-/** 娱乐向分享口令（便于朋友圈/群聊复制） */
 function buildShareCode(result) {
   const n = result && result.mid ? Math.round(result.mid) : 0
   return 'TD' + String((n * 7 + (Date.now() % 10000)) % 10000).padStart(4, '0')
 }
 
-async function copyText(text) {
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(text)
-      return true
+function copyText(text) {
+  return new Promise(function (resolve) {
+    function fallback() {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.cssText = 'position:fixed;left:-9999px;top:0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      document.body.removeChild(ta)
+      resolve(!!ok)
     }
-  } catch (_) { /* fallback below */ }
-  const ta = document.createElement('textarea')
-  ta.value = text
-  ta.style.cssText = 'position:fixed;left:-9999px;top:0'
-  document.body.appendChild(ta)
-  ta.select()
-  const ok = document.execCommand('copy')
-  document.body.removeChild(ta)
-  return ok
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          resolve(true)
+        }).catch(fallback)
+        return
+      }
+    } catch (_) { /* use fallback */ }
+    fallback()
+  })
 }
 
 function showToast(msg) {
@@ -93,7 +134,9 @@ function showToast(msg) {
   el.textContent = msg
   el.classList.add('visible')
   clearTimeout(el._hideTimer)
-  el._hideTimer = setTimeout(() => el.classList.remove('visible'), 2400)
+  el._hideTimer = setTimeout(function () {
+    el.classList.remove('visible')
+  }, 2400)
 }
 
 function onId(id, event, fn) {
@@ -106,7 +149,16 @@ function onSel(sel, event, fn, root) {
   if (el) el.addEventListener(event, fn)
 }
 
-window.TDUtils = { img, esc, formatReplyDeadline, getConsultUrl, getHomeShareUrl, getGameShareUrl, getSharePageUrl, buildShareCode, copyText, showToast, onId, onSel };
+function closestEl(node, selector) {
+  let el = node
+  while (el && el.nodeType === 1) {
+    if (el.matches && el.matches(selector)) return el
+    el = el.parentElement
+  }
+  return null
+}
+
+window.TDUtils = { img, esc, formatReplyDeadline, getSiteBase, pageUrl, goPage, parsePageQuery, getConsultUrl, getHomeShareUrl, getGameShareUrl, getSharePageUrl, buildShareCode, copyText, showToast, onId, onSel, closestEl };
 
 /* global bundle: TDContent */
 const BRAND = {
@@ -1041,6 +1093,134 @@ function getGameById(id) {
 
 window.TDGameCatalog = { GAME_CATALOG, HUB_META, getGameById, getLiveGames };
 
+/* global bundle: TDGeoConfig */
+/**
+ * 同城 GEO / 本地搜索运营配置（Marketing 可改此文件，无需动业务逻辑）
+ * 坐标请在高德/百度地图选点后台复制；留空则仅显示文字地址与外链入驻指引
+ */
+const LOCAL_GEO = {
+  brandName: '头大大谈经营',
+  legalName: '头大大管理咨询（个人）',
+  /** 主战场城市（同城 SEO 核心词） */
+  primaryCity: '成都',
+  /** 辐射城市（页面标签 & 文案） */
+  serviceCities: ['成都', '重庆', '绵阳', '德阳', '乐山', '宜宾'],
+  /** 行业同城词 */
+  industries: ['餐饮', '酒店', '夜场', '服务业', '门店经营'],
+  regionLabel: '西南',
+  address: '四川省成都市（咨询预约后告知详细见面/线上方式）',
+  /** 高德 GCJ-02：lng,lat — 入驻地图前请替换为真实坐标 */
+  coordinates: { lng: 104.066541, lat: 30.572269 },
+  phone: '',
+  wechatNote: '微信咨询请通过官网问卷留下手机号，24 小时内联系',
+  businessHours: '预约制 · 咨询时段 9:00–21:00',
+  priceRange: '$$',
+  /** 地图平台认领状态（运营打勾用） */
+  mapListings: [
+    { id: 'amap', name: '高德地图', status: 'pending', claimUrl: 'https://lbs.amap.com/console/show/poiinfo' },
+    { id: 'baidu', name: '百度地图', status: 'pending', claimUrl: 'https://map.baidu.com/' },
+    { id: 'tencent', name: '腾讯地图', status: 'pending', claimUrl: 'https://map.qq.com/' },
+    { id: 'dianping', name: '大众点评（商户）', status: 'pending', claimUrl: 'https://www.dianping.com/' }
+  ]
+}
+
+/** 按页面生成 Title / Description / Keywords */
+function geoMetaForPage(page, sub) {
+  const c = LOCAL_GEO.primaryCity
+  const cities = LOCAL_GEO.serviceCities.slice(0, 3).join('、')
+  const base = {
+    home: {
+      title: `${LOCAL_GEO.brandName} · ${c}餐饮门店经营咨询 | ${cities}同城`,
+      description: `${c}、${cities}餐饮·酒店·服务业老板经营诊断、运营优化、30秒问卷预约，24小时内联系。个人OPC · 头大大谈经营。`,
+      keywords: `${c}餐饮咨询,${c}门店诊断,${c}经营顾问,餐饮运营优化,同城经营咨询,头大大`
+    },
+    consult: {
+      title: `预约咨询 · ${c}门店经营问卷 | ${LOCAL_GEO.brandName}`,
+      description: `${c}及${LOCAL_GEO.regionLabel}地区餐饮老板 1 分钟问卷，5 道经营题 + 基础信息，24 小时内头大大联系您。`,
+      keywords: `${c}餐饮咨询预约,门店经营问卷,餐饮诊断预约`
+    },
+    about: {
+      title: `关于头大大 · ${c}个人经营咨询顾问 | ${LOCAL_GEO.brandName}`,
+      description: `头大大，${LOCAL_GEO.industries.join('、')}个人管理咨询 OPC，${cities}同城可预约。`,
+      keywords: `头大大,${c}管理咨询,个人经营顾问`
+    },
+    local: {
+      title: `同城服务 · ${c}地图找店 | ${LOCAL_GEO.brandName}`,
+      description: `${c}同城餐饮经营咨询 · 地图入驻指引 · 线上下单线下对接。`,
+      keywords: `${c}地图商户,同城获客,餐饮咨询${c}`
+    },
+    measure: {
+      title: `门店估值测测 · ${LOCAL_GEO.brandName}娱乐测评`,
+      description: `${c}餐饮老板娱乐向门店估值小游戏，纯属娱乐，可转发邀请同城老板一起测。`,
+      keywords: `门店估值,餐饮测一测,${c}餐饮`
+    },
+    share: {
+      title: `邀请朋友 · ${LOCAL_GEO.brandName}`,
+      description: `分享链接或二维码，邀请同城老板来测一测、来咨询。`,
+      keywords: `分享,邀请,${c}餐饮`
+    },
+    admin: {
+      title: `线索后台 · ${LOCAL_GEO.brandName}`,
+      description: `官网咨询线索管理（不公开索引）`,
+      keywords: '',
+      robots: 'noindex,nofollow'
+    }
+  }
+  if (page === 'consult' && sub === 'start') {
+    return {
+      title: `填写问卷 · ${c}经营咨询 | ${LOCAL_GEO.brandName}`,
+      description: `5 道经营勾选题，深度了解${c}门店现状，24 小时内联系。`,
+      keywords: base.consult.keywords
+    }
+  }
+  return base[page] || base.home
+}
+
+function localMapLinks() {
+  const { lng, lat } = LOCAL_GEO.coordinates
+  const name = encodeURIComponent(LOCAL_GEO.brandName)
+  const addr = encodeURIComponent(LOCAL_GEO.address)
+  return {
+    amap: `https://uri.amap.com/marker?position=${lng},${lat}&name=${name}&src=toudada&coordinate=gaode&callnative=1`,
+    amapNav: `https://uri.amap.com/navigation?to=${lng},${lat},${name}&mode=car&coordinate=gaode&callnative=1`,
+    baidu: `https://api.map.baidu.com/marker?location=${lat},${lng}&title=${name}&content=${addr}&output=html`,
+    tencent: `https://apis.map.qq.com/uri/v1/marker?marker=coord:${lat},${lng};title:${name};addr:${addr}&referer=toudada`
+  }
+}
+
+window.TDGeoConfig = { LOCAL_GEO, geoMetaForPage, localMapLinks };
+
+/* global bundle: TDLeadsConfig */
+/**
+ * 线索后台配置
+ * 飞书方案：填 feishuWebhookUrl（自动化 Webhook 地址）+ feishuTableUrl（表格链接）
+ */
+const LEADS_CONFIG = {
+  /** 飞书群机器人 Webhook（客户填表 → 群里收消息） */
+  feishuWebhookUrl:
+    'https://open.feishu.cn/open-apis/bot/v2/hook/dcacfb10-6a9f-4ea7-ab3c-d0727e9af6b1',
+  feishuTableUrl:
+    'https://my.feishu.cn/wiki/P34cwa6fPiFuHSkwjc5cGddfnRD?table=tblnczMzQaLlLGqj&view=vewe7uujDk',
+
+  submitUrl: '',
+  adminListUrl: '',
+  accessToken: ''
+}
+
+function feishuBackendReady() {
+  return !!(LEADS_CONFIG.feishuWebhookUrl && LEADS_CONFIG.feishuWebhookUrl.trim())
+}
+
+function cloudBackendReady() {
+  return !!(LEADS_CONFIG.submitUrl && LEADS_CONFIG.accessToken)
+}
+
+function leadsBackendReady() {
+  return feishuBackendReady() || cloudBackendReady()
+}
+
+window.TDLeadsConfig = { LEADS_CONFIG, leadsBackendReady, feishuBackendReady, cloudBackendReady };
+
 const ROUNDS = [
   { q: '你的店在哪个城市能级？', cells: ['一线核心', '一线外围', '新一线', '强二线', '普通二线', '三线市区', '三线县城', '四线', '更小城镇'], scores: [1.35, 1.25, 1.15, 1.05, 0.95, 0.85, 0.78, 0.7, 0.62] },
   { q: '主要业态是？', cells: ['正餐中餐', '火锅烧烤', '小吃快餐', '咖啡茶饮', '烘焙甜品', '酒吧夜场', '酒店民宿', '团餐食堂', '其他业态'], scores: [1.0, 1.08, 0.92, 1.05, 0.88, 1.12, 1.15, 0.85, 0.9] },
@@ -1449,15 +1629,17 @@ function createMeasureController(root, { onClose }) {
       render()
     }, root)
     window.TDUtils.onSel('[data-action="close"]', 'click', () => onClose(), root)
-    window.TDUtils.onSel('[data-action="copy-share"]', 'click', async () => {
+    window.TDUtils.onSel('[data-action="copy-share"]', 'click', function () {
       const link = window.TDUtils.getGameShareUrl()
-      const msg = `${state.shareText}\n${link}`
-      const ok = await window.TDUtils.copyText(msg)
-      window.TDUtils.showToast(ok ? '已复制，去微信粘贴发送吧' : '复制失败，请长按文案手动复制')
+      const msg = state.shareText + '\n' + link
+      window.TDUtils.copyText(msg).then(function (ok) {
+        window.TDUtils.showToast(ok ? '已复制，去微信粘贴发送吧' : '复制失败，请长按文案手动复制')
+      })
     }, root)
-    window.TDUtils.onSel('[data-action="copy-link"]', 'click', async () => {
-      const ok = await window.TDUtils.copyText(window.TDUtils.getGameShareUrl())
-      window.TDUtils.showToast(ok ? '链接已复制' : '复制失败，请手动复制链接')
+    window.TDUtils.onSel('[data-action="copy-link"]', 'click', function () {
+      window.TDUtils.copyText(window.TDUtils.getGameShareUrl()).then(function (ok) {
+        window.TDUtils.showToast(ok ? '链接已复制' : '复制失败，请手动复制链接')
+      })
     }, root)
     window.TDUtils.onSel('[data-action="replay"]', 'click', () => {
       clearTimers()
@@ -1569,7 +1751,319 @@ function createMeasureController(root, { onClose }) {
 
 window.createMeasureController = createMeasureController;
 
+const SCHEMA_ID = 'td-jsonld-local'
+
+function applyGeoSeo(page, sub) {
+  const meta = window.TDGeoConfig.geoMetaForPage(page, sub)
+  document.title = meta.title
+
+  setMeta('name', 'description', meta.description)
+  setMeta('name', 'keywords', meta.keywords)
+  setMeta('property', 'og:title', meta.title)
+  setMeta('property', 'og:description', meta.description)
+  setMeta('property', 'og:type', 'website')
+  setMeta('property', 'og:locale', 'zh_CN')
+  setMeta('name', 'robots', meta.robots || 'index,follow')
+  setMeta('name', 'geo.region', 'CN-SC')
+  setMeta('name', 'geo.placename', window.TDGeoConfig.LOCAL_GEO.primaryCity)
+
+  const canonical = window.TDUtils.pageUrl(page === 'home' ? 'home' : page, sub || '')
+  setLink('canonical', canonical)
+
+  injectLocalBusinessSchema(page)
+}
+
+function setMeta(attr, key, content) {
+  if (!content) return
+  let el = document.querySelector(`meta[${attr}="${key}"]`)
+  if (!el) {
+    el = document.createElement('meta')
+    el.setAttribute(attr, key)
+    document.head.appendChild(el)
+  }
+  el.setAttribute('content', content)
+}
+
+function setLink(rel, href) {
+  let el = document.querySelector(`link[rel="${rel}"]`)
+  if (!el) {
+    el = document.createElement('link')
+    el.setAttribute('rel', rel)
+    document.head.appendChild(el)
+  }
+  el.setAttribute('href', href)
+}
+
+function injectLocalBusinessSchema(page) {
+  const base = window.TDUtils.getSiteBase()
+  const { lng, lat } = window.TDGeoConfig.LOCAL_GEO.coordinates
+  const graph = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Organization',
+        '@id': `${base}#organization`,
+        name: window.TDGeoConfig.LOCAL_GEO.brandName,
+        url: base,
+        description: window.TDGeoConfig.geoMetaForPage('home').description,
+        areaServed: window.TDGeoConfig.LOCAL_GEO.serviceCities.map((city) => ({
+          '@type': 'City',
+          name: city,
+          containedInPlace: { '@type': 'Country', name: '中国' }
+        }))
+      },
+      {
+        '@type': 'ProfessionalService',
+        '@id': `${base}#local-business`,
+        name: window.TDGeoConfig.LOCAL_GEO.brandName,
+        description: `${window.TDGeoConfig.LOCAL_GEO.primaryCity}餐饮·酒店·服务业经营咨询（个人 OPC）`,
+        url: window.TDUtils.pageUrl('local'),
+        telephone: window.TDGeoConfig.LOCAL_GEO.phone || undefined,
+        priceRange: window.TDGeoConfig.LOCAL_GEO.priceRange,
+        address: {
+          '@type': 'PostalAddress',
+          addressLocality: window.TDGeoConfig.LOCAL_GEO.primaryCity,
+          addressRegion: '四川省',
+          addressCountry: 'CN',
+          streetAddress: window.TDGeoConfig.LOCAL_GEO.address
+        },
+        geo: {
+          '@type': 'GeoCoordinates',
+          latitude: lat,
+          longitude: lng
+        },
+        openingHoursSpecification: {
+          '@type': 'OpeningHoursSpecification',
+          dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+          opens: '09:00',
+          closes: '21:00'
+        },
+        areaServed: window.TDGeoConfig.LOCAL_GEO.serviceCities,
+        knowsAbout: window.TDGeoConfig.LOCAL_GEO.industries
+      },
+      {
+        '@type': 'WebSite',
+        '@id': `${base}#website`,
+        name: window.TDGeoConfig.LOCAL_GEO.brandName,
+        url: base,
+        publisher: { '@id': `${base}#organization` },
+        inLanguage: 'zh-CN'
+      }
+    ]
+  }
+
+  if (page === 'consult') {
+    graph['@graph'].push({
+      '@type': 'FAQPage',
+      mainEntity: [
+        {
+          '@type': 'Question',
+          name: `${window.TDGeoConfig.LOCAL_GEO.primaryCity}餐饮老板如何预约咨询？`,
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: '在官网填写 30 秒问卷（5 道经营题 + 基础信息），24 小时内头大大通过电话或微信联系您。'
+          }
+        },
+        {
+          '@type': 'Question',
+          name: '服务哪些城市？',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: `主要服务${window.TDGeoConfig.LOCAL_GEO.serviceCities.join('、')}等${window.TDGeoConfig.LOCAL_GEO.regionLabel}城市，远程诊断 + 预约见面。`
+          }
+        }
+      ]
+    })
+  }
+
+  let node = document.getElementById(SCHEMA_ID)
+  if (!node) {
+    node = document.createElement('script')
+    node.id = SCHEMA_ID
+    node.type = 'application/ld+json'
+    document.head.appendChild(node)
+  }
+  node.textContent = JSON.stringify(graph)
+}
+
+window.TDGeoSeo = { applyGeoSeo };
+
+const ADMIN_TOKEN_KEY = 'td_admin_token'
+
+function validateLeadPayload(record) {
+  const phone = (record.basicInfo && record.basicInfo.phone) || ''
+  const city = (record.basicInfo && record.basicInfo.city) || ''
+  if (!city.trim()) return '请填写城市'
+  if (!/^1\d{10}$/.test(String(phone).trim())) return '请填写有效手机号'
+  if (!record.basicInfo.privacyAgreed) return '请同意隐私政策'
+  return null
+}
+
+function buildRemotePayload(record) {
+  const b = record.basicInfo || {}
+  const submittedAt = new Date().toLocaleString('zh-CN', { hour12: false })
+  const payload = {
+    source: '官网',
+    submittedAt: submittedAt,
+    city: b.city || '',
+    phone: b.phone || '',
+    industryType: b.industryType || '',
+    investmentStatus: b.investmentStatus || '',
+    investmentRange: b.investmentRange || '',
+    age: b.age && b.age !== '不填写' ? b.age : '',
+    gender: b.gender && b.gender !== '不填写' ? b.gender : '',
+    summary: record.summary || '',
+    answers: record.answers || {}
+  }
+  payload.content = [
+    '【官网新咨询】',
+    '时间：' + submittedAt,
+    '城市：' + payload.city,
+    '手机：' + payload.phone,
+    '业态：' + payload.industryType,
+    '投资：' + payload.investmentStatus + (payload.investmentRange ? ' · ' + payload.investmentRange : ''),
+    '画像：' + (payload.age || payload.gender ? [payload.age, payload.gender].filter(Boolean).join(' · ') : '未填'),
+    '',
+    payload.summary
+  ].join('\n')
+  return payload
+}
+
+function isFeishuBotWebhook(url) {
+  return /bot\/v2\/hook/i.test(url)
+}
+
+/** 飞书：多维表格 Webhook 或群机器人 Webhook */
+function submitLeadFeishu(record) {
+  const url = window.TDLeadsConfig.LEADS_CONFIG.feishuWebhookUrl.trim()
+  const payload = buildRemotePayload(record)
+  let body
+  if (isFeishuBotWebhook(url)) {
+    body = JSON.stringify({
+      msg_type: 'text',
+      content: { text: payload.content }
+    })
+  } else {
+    body = JSON.stringify(payload)
+  }
+  return fetch(url, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+    body: body
+  }).then(function () {
+    return { ok: true, reason: 'feishu' }
+  })
+}
+
+function submitLeadCloud(record) {
+  const payload = {
+    source: 'web',
+    ts: Date.now(),
+    answers: record.answers,
+    basicInfo: record.basicInfo,
+    summary: record.summary
+  }
+  return fetch(window.TDLeadsConfig.LEADS_CONFIG.submitUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + window.TDLeadsConfig.LEADS_CONFIG.accessToken
+    },
+    body: JSON.stringify(payload),
+    credentials: 'omit',
+    mode: 'cors'
+  }).then(function (res) {
+    if (!res.ok) throw new Error('submit failed ' + res.status)
+    return res.json().then(function () {
+      return { ok: true, reason: 'cloud' }
+    })
+  })
+}
+
+function submitLeadRemote(record) {
+  if (!window.TDLeadsConfig.leadsBackendReady()) {
+    return Promise.resolve({ ok: false, reason: 'local_only' })
+  }
+  if (window.TDLeadsConfig.feishuBackendReady()) {
+    return submitLeadFeishu(record)
+  }
+  if (window.TDLeadsConfig.cloudBackendReady()) {
+    return submitLeadCloud(record)
+  }
+  return Promise.resolve({ ok: false, reason: 'local_only' })
+}
+
+function submitLeadLocal(record, storageKey) {
+  const leads = JSON.parse(localStorage.getItem(storageKey) || '[]')
+  leads.unshift(record)
+  localStorage.setItem(storageKey, JSON.stringify(leads.slice(0, 50)))
+  return Promise.resolve({ ok: true, reason: 'local_storage' })
+}
+
+function getAdminToken() {
+  try {
+    return sessionStorage.getItem(ADMIN_TOKEN_KEY) || ''
+  } catch (e) {
+    return ''
+  }
+}
+
+function setAdminToken(token) {
+  try {
+    sessionStorage.setItem(ADMIN_TOKEN_KEY, token)
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+function clearAdminToken() {
+  try {
+    sessionStorage.removeItem(ADMIN_TOKEN_KEY)
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+function fetchWebLeads(token) {
+  const listUrl = window.TDLeadsConfig.LEADS_CONFIG.adminListUrl
+  if (!listUrl) {
+    return Promise.reject(new Error('adminListUrl not configured'))
+  }
+  const authToken = token || getAdminToken() || window.TDLeadsConfig.LEADS_CONFIG.accessToken
+  if (!authToken) {
+    return Promise.reject(new Error('need token'))
+  }
+  return fetch(listUrl, {
+    method: 'GET',
+    headers: { Authorization: 'Bearer ' + authToken },
+    credentials: 'omit',
+    mode: 'cors'
+  }).then(function (res) {
+    if (res.status === 401) throw new Error('unauthorized')
+    if (!res.ok) throw new Error('fetch failed ' + res.status)
+    return res.json()
+  })
+}
+
+function maskPhone(phone) {
+  const p = String(phone || '')
+  if (p.length < 7) return window.TDUtils.esc(p)
+  return window.TDUtils.esc(p.slice(0, 3) + '****' + p.slice(-4))
+}
+
+function formatLeadTime(lead) {
+  const t = lead.createdAt
+  if (!t) return '—'
+  if (typeof t === 'string') return new Date(t).toLocaleString('zh-CN')
+  if (t.$date) return new Date(t.$date).toLocaleString('zh-CN')
+  return '—'
+}
+
+window.TDLeadsApi = { validateLeadPayload, submitLeadRemote, submitLeadFeishu, submitLeadCloud, submitLeadLocal, fetchWebLeads, getAdminToken, setAdminToken, clearAdminToken, maskPhone, formatLeadTime };
+
 const LEADS_KEY = 'toudada_web_leads'
+let lastSubmitMode = 'local_only'
 const app = document.getElementById('app')
 const modalRoot = document.getElementById('modal-root')
 let measureController = null
@@ -1611,11 +2105,10 @@ function ipGridItems() {
 }
 
 function route() {
-  const params = new URLSearchParams(location.search)
-  const fromQuery = params.get('p')
-  if (fromQuery) {
-    const sub = params.get('sub') || params.get('game') || ''
-    return { page: fromQuery, sub }
+  const q = window.TDUtils.parsePageQuery()
+  if (q.p) {
+    const sub = q.sub || q.game || ''
+    return { page: q.p, sub }
   }
   const hash = location.hash.replace(/^#/, '') || 'home'
   const parts = hash.split('/')
@@ -1630,8 +2123,8 @@ function setActiveNav(page) {
 }
 
 function renderSharePage() {
-  const params = new URLSearchParams(location.search)
-  const type = params.get('type') || 'home'
+  const q = window.TDUtils.parsePageQuery()
+  const type = q.type || 'home'
   const targets = {
     home: { title: '邀请朋友来逛逛', desc: '朋友点开链接，进入头大大谈经营首页', url: window.TDUtils.getHomeShareUrl(), cta: '进入首页', go: '?p=home' },
     game: { title: '邀请朋友来测一测', desc: '朋友点开链接，直接玩门店估值小游戏', url: window.TDUtils.getGameShareUrl(), cta: '我也测一测', go: '?p=measure&game=store' },
@@ -1659,36 +2152,21 @@ function renderSharePage() {
     QRCode.toCanvas(canvas, t.url, { width: 220, margin: 2, color: { dark: '#1a3668' } }).catch(() => {})
   }
 
-  window.TDUtils.onId('share-copy-link', 'click', async () => {
-    const ok = await window.TDUtils.copyText(t.url)
-    window.TDUtils.showToast(ok ? '链接已复制，去微信粘贴发送吧' : '复制失败，请长按链接手动复制')
+  window.TDUtils.onId('share-copy-link', 'click', function () {
+    window.TDUtils.copyText(t.url).then(function (ok) {
+      window.TDUtils.showToast(ok ? '链接已复制，去微信粘贴发送吧' : '复制失败，请长按链接手动复制')
+    })
   })
 }
 
 function bindSiteNav() {
-  function goHash(target) {
-    location.hash = target || 'home'
-    render()
-  }
-
-  function handleNavClick(e) {
-    const link = e.target.closest('a[href^="#"], a[href^="?"]')
-    if (!link) return
-    const href = link.getAttribute('href')
-    if (!href || href === '#') return
-    if (href.startsWith('?')) return
-    e.preventDefault()
-    goHash(href.slice(1))
-  }
-
-  document.addEventListener('click', handleNavClick, false)
-  document.addEventListener('touchend', handleNavClick, false)
-
-  document.addEventListener('click', (e) => {
-    const el = e.target.closest('[data-go]')
+  document.addEventListener('click', function (e) {
+    const el = window.TDUtils.closestEl(e.target, '[data-go]')
     if (!el) return
     e.preventDefault()
-    goHash(el.getAttribute('data-go'))
+    const go = el.getAttribute('data-go')
+    if (go === 'measure') window.TDUtils.goPage('measure', 'store')
+    else window.TDUtils.goPage(go || 'home')
   }, false)
 }
 
@@ -1742,19 +2220,6 @@ function renderHome() {
           </div>
         </section>
 
-        <section class="home-quick-nav" aria-label="快捷入口">
-          <a href="?p=consult" class="home-quick-card home-quick-card--consult">
-            <span class="home-quick-icon">💬</span>
-            <span class="home-quick-title">咨询</span>
-            <span class="home-quick-desc">30秒问卷 · 24小时内联系</span>
-          </a>
-          <a href="?p=about" class="home-quick-card home-quick-card--about">
-            <span class="home-quick-icon">👤</span>
-            <span class="home-quick-title">本人</span>
-            <span class="home-quick-desc">了解头大大 · 资历与案例</span>
-          </a>
-        </section>
-
         <section class="measure-teaser" id="open-measure" data-go="measure" role="button" tabindex="0">
           <span class="measure-teaser-badge">纯属娱乐</span>
           <h2 class="measure-teaser-title">头大大 · 测测</h2>
@@ -1781,7 +2246,7 @@ function renderHome() {
           <div class="feed-list">${feeds}</div>
         </section>
 
-        <section class="case-spotlight" data-nav="about">
+        <section class="case-spotlight" data-go="about" role="button" tabindex="0">
           <p class="case-spotlight-label">案例速递</p>
           <h3 class="case-spotlight-title">${window.TDUtils.esc(featured.title)}</h3>
           <p class="text-muted">${window.TDUtils.esc(featured.progress)}</p>
@@ -1797,7 +2262,7 @@ function renderHome() {
     el.addEventListener('click', () => openIpModal(el.dataset.ipKey))
   })
   window.TDUtils.onSel('[data-action="topic-submit"]', 'click', openTopicSubmitModal, app)
-  window.TDUtils.onSel('[data-nav="about"]', 'click', () => { location.hash = 'about' }, app)
+  window.TDUtils.onSel('[data-nav="about"]', 'click', () => { window.TDUtils.goPage('about') }, app)
 }
 
 function renderConsult() {
@@ -1840,9 +2305,9 @@ function renderConsult() {
         <h2 class="block-title">咨询流程</h2>
         ${steps.map((s) => `<div class="card step-card"><div class="step-num">${s.num}</div><div><p class="step-title">${window.TDUtils.esc(s.title)}</p><p class="step-desc">${window.TDUtils.esc(s.desc)}</p></div></div>`).join('')}
         <div class="action-row">
-          <a href="#consult/start" class="btn-primary">${hasDraft ? '重新开始' : '立即开聊'}</a>
-          ${hasDraft ? '<a href="#consult/start" class="btn-accent" id="continue-draft-btn">继续填写</a>' : ''}
-          <a href="#consult/progress" class="btn-secondary">查看我的进度</a>
+          <a href="${window.TDUtils.pageUrl('consult', 'start')}" class="btn-primary">${hasDraft ? '重新开始' : '立即开聊'}</a>
+          ${hasDraft ? `<a href="${window.TDUtils.pageUrl('consult', 'start')}" class="btn-accent" id="continue-draft-btn">继续填写</a>` : ''}
+          <a href="${window.TDUtils.pageUrl('consult', 'progress')}" class="btn-secondary">查看我的进度</a>
         </div>
         <section class="card">
           <div class="block-head"><h2 class="block-title">L1–L9 咨询梯度</h2></div>
@@ -1851,10 +2316,10 @@ function renderConsult() {
       </div>
     </div>`
 
-  window.TDUtils.onId('continue-draft', 'click', () => { location.hash = 'consult/start' })
+  window.TDUtils.onId('continue-draft', 'click', () => { window.TDUtils.goPage('consult', 'start') })
   window.TDUtils.onId('continue-draft-btn', 'click', (e) => {
     e.preventDefault()
-    location.hash = 'consult/start'
+    window.TDUtils.goPage('consult', 'start')
   })
   app.querySelectorAll('.product-row').forEach((row) => {
     row.addEventListener('click', () => {
@@ -1918,7 +2383,7 @@ function renderQuestionnaire() {
   })
 
   document.getElementById('q-prev').addEventListener('click', () => {
-    if (draft.qIndex === 0) location.hash = 'consult'
+    if (draft.qIndex === 0) window.TDUtils.goPage('consult')
     else {
       draft.qIndex -= 1
       renderQuestionnaire()
@@ -1927,7 +2392,7 @@ function renderQuestionnaire() {
 
   document.getElementById('q-next').addEventListener('click', () => {
     if (draft.qIndex >= window.TDConstants.QUESTIONS.length - 1) {
-      location.hash = 'consult/basic'
+      window.TDUtils.goPage('consult', 'basic')
       return
     }
     draft.qIndex += 1
@@ -1937,7 +2402,7 @@ function renderQuestionnaire() {
 
 function renderBasicInfo() {
   if (!draft.answers.q1_stage) {
-    location.hash = 'consult/start'
+    window.TDUtils.goPage('consult', 'start')
     return
   }
 
@@ -1989,7 +2454,7 @@ function renderBasicInfo() {
   })
 
   window.TDUtils.onId('basic-prev', 'click', () => {
-    if (step === 1) location.hash = 'consult/start'
+    if (step === 1) window.TDUtils.goPage('consult', 'start')
     else {
       draft.basicStep = 1
       renderBasicInfo()
@@ -2045,20 +2510,42 @@ function submitConsult() {
     stage: '线索',
     createdAt: new Date().toISOString()
   }
-  const leads = JSON.parse(localStorage.getItem(LEADS_KEY) || '[]')
-  leads.unshift(record)
-  localStorage.setItem(LEADS_KEY, JSON.stringify(leads))
-  localStorage.setItem('toudada_last_lead_id', record.id)
-  localStorage.removeItem(window.TDConstants.PENDING_CONSULT_KEY)
-  draft.answers = {}
-  draft.basic = {}
-  draft.qIndex = 0
-  draft.basicStep = 1
-  location.hash = 'consult/success'
+  const err = window.TDLeadsApi.validateLeadPayload(record)
+  if (err) {
+    alert(err)
+    return
+  }
+  window.TDLeadsApi.submitLeadRemote(record)
+    .then(function (remote) {
+      if (remote.ok) return remote
+      return window.TDLeadsApi.submitLeadLocal(record, LEADS_KEY)
+    })
+    .catch(function () {
+      return window.TDLeadsApi.submitLeadLocal(record, LEADS_KEY)
+    })
+    .then(function (result) {
+      lastSubmitMode = result.reason || 'local_storage'
+      localStorage.setItem('toudada_last_lead_id', record.id)
+      localStorage.removeItem(window.TDConstants.PENDING_CONSULT_KEY)
+      draft.answers = {}
+      draft.basic = {}
+      draft.qIndex = 0
+      draft.basicStep = 1
+      window.TDUtils.goPage('consult', 'success')
+    })
 }
 
 function renderSuccess() {
   const deadline = window.TDUtils.formatReplyDeadline(24)
+  const cloudOk = lastSubmitMode === 'cloud'
+  const feishuOk = lastSubmitMode === 'feishu'
+  let backendNote = '（演示模式：信息暂存在您本机浏览器；配置飞书 Webhook 后老板可在表格中查看。）'
+  if (feishuOk) {
+    backendNote = '您的信息已提交，头大大会在 24 小时内联系您。'
+  } else if (cloudOk) {
+    backendNote = '您的信息已安全提交，头大大会在后台收到并尽快联系您。'
+  }
+
   app.innerHTML = `
     <div style="max-width:640px;margin:0 auto">
       <section class="success-hero">
@@ -2070,10 +2557,11 @@ function renderSuccess() {
         <p><strong>预计回复</strong><br><span class="text-muted">24 小时内（不晚于 ${window.TDUtils.esc(deadline)}）</span></p>
         <hr style="border:none;border-top:1px solid var(--color-border);margin:16px 0" />
         <p><strong>下一步</strong><br><span class="text-muted">头大大将根据问卷与您初步沟通</span></p>
+        <p class="text-muted" style="font-size:13px;margin-top:12px">${window.TDUtils.esc(backendNote)}</p>
       </div>
       <div class="action-row">
-        <a href="#consult/progress" class="btn-primary">查看我的进度</a>
-        <a href="#home" class="btn-secondary">返回首页</a>
+        <a href="${window.TDUtils.pageUrl('consult', 'progress')}" class="btn-primary">查看我的进度</a>
+        <a href="${window.TDUtils.pageUrl('home')}" class="btn-secondary">返回首页</a>
       </div>
     </div>`
 }
@@ -2088,22 +2576,207 @@ function renderProgress() {
       <div class="card" style="max-width:560px;margin:0 auto;text-align:center">
         <h2>暂无咨询记录</h2>
         <p class="text-muted">提交问卷后，可在此查看进度</p>
-        <a href="#consult/start" class="btn-primary">立即开聊</a>
+        <a href="${window.TDUtils.pageUrl('consult', 'start')}" class="btn-primary">立即开聊</a>
       </div>`
     return
   }
+
+  const safeSummary = window.TDUtils.esc(lead.summary).replace(/1\d{10}/g, function (m) {
+    return m.slice(0, 3) + '****' + m.slice(-4)
+  })
 
   app.innerHTML = `
     <div class="card" style="max-width:640px;margin:0 auto">
       <h1 class="question-title">我的咨询进度</h1>
       <p class="text-muted">提交时间：${new Date(lead.createdAt).toLocaleString('zh-CN')}</p>
       <p style="font-size:18px;font-weight:700;color:var(--color-mint);margin:20px 0">当前阶段：${window.TDUtils.esc(lead.stage)}</p>
-      <pre style="white-space:pre-wrap;font-size:13px;background:rgba(26,54,104,0.04);padding:16px;border-radius:12px;line-height:1.6">${window.TDUtils.esc(lead.summary)}</pre>
+      <pre style="white-space:pre-wrap;font-size:13px;background:rgba(26,54,104,0.04);padding:16px;border-radius:12px;line-height:1.6">${safeSummary}</pre>
       <div class="action-row">
-        <a href="#consult" class="btn-secondary">返回咨询</a>
-        <a href="#home" class="btn-primary">回首页</a>
+        <a href="${window.TDUtils.pageUrl('consult')}" class="btn-secondary">返回咨询</a>
+        <a href="${window.TDUtils.pageUrl('home')}" class="btn-primary">回首页</a>
       </div>
     </div>`
+}
+
+function renderLocalPage() {
+  const maps = window.TDGeoConfig.localMapLinks()
+  const cities = window.TDGeoConfig.LOCAL_GEO.serviceCities
+    .map((city) => `<span class="local-city-chip">${window.TDUtils.esc(city)}</span>`)
+    .join('')
+  const listings = window.TDGeoConfig.LOCAL_GEO.mapListings
+    .map(function (item) {
+      const done = item.status === 'live'
+      return `
+      <div class="local-map-row">
+        <span class="local-map-name">${window.TDUtils.esc(item.name)}</span>
+        <span class="local-map-status ${done ? 'local-map-status--live' : ''}">${done ? '已入驻' : '待认领'}</span>
+        <a href="${window.TDUtils.esc(item.claimUrl)}" class="local-map-link" target="_blank" rel="noopener noreferrer">认领指引</a>
+      </div>`
+    })
+    .join('')
+
+  app.innerHTML = `
+    <div class="page-wrap local-page">
+      <section class="page-hero-band local-hero">
+        <p class="page-hero-badge">同城 · ${window.TDUtils.esc(window.TDGeoConfig.LOCAL_GEO.regionLabel)}</p>
+        <h1 class="page-hero-title">${window.TDUtils.esc(window.TDGeoConfig.LOCAL_GEO.primaryCity)}餐饮门店经营咨询</h1>
+        <p class="page-hero-desc">个人 OPC · 线上下单 · 预约对接 · 地图可找</p>
+      </section>
+
+      <section class="card">
+        <h2 class="block-title">服务城市</h2>
+        <div class="local-city-grid">${cities}</div>
+        <p class="text-muted" style="margin-top:12px;line-height:1.6">主营 ${window.TDUtils.esc(window.TDGeoConfig.LOCAL_GEO.industries.join('、'))} · ${window.TDUtils.esc(window.TDGeoConfig.LOCAL_GEO.businessHours)}</p>
+      </section>
+
+      <section class="card local-map-card">
+        <h2 class="block-title">地图找店 · 一键导航</h2>
+        <p class="text-muted">${window.TDUtils.esc(window.TDGeoConfig.LOCAL_GEO.address)}</p>
+        <p class="text-muted" style="font-size:13px">${window.TDUtils.esc(window.TDGeoConfig.LOCAL_GEO.wechatNote)}</p>
+        <div class="local-map-actions">
+          <a href="${window.TDUtils.esc(maps.amap)}" class="btn-primary local-map-btn" target="_blank" rel="noopener noreferrer">高德地图</a>
+          <a href="${window.TDUtils.esc(maps.baidu)}" class="btn-secondary local-map-btn" target="_blank" rel="noopener noreferrer">百度地图</a>
+          <a href="${window.TDUtils.esc(maps.tencent)}" class="btn-secondary local-map-btn" target="_blank" rel="noopener noreferrer">腾讯地图</a>
+        </div>
+        <a href="${window.TDUtils.esc(maps.amapNav)}" class="local-nav-link" target="_blank" rel="noopener noreferrer">驾车导航 →</a>
+      </section>
+
+      <section class="card">
+        <h2 class="block-title">地图平台入驻（运营清单）</h2>
+        <p class="text-muted" style="font-size:13px;margin-bottom:12px">Marketing 认领 POI 后，在 web/js/geo-config.js 把 status 改为 live</p>
+        ${listings}
+      </section>
+
+      <section class="card local-copy-block">
+        <h2 class="block-title">同城老板常见搜索</h2>
+        <ul class="local-faq">
+          <li>${window.TDUtils.esc(window.TDGeoConfig.LOCAL_GEO.primaryCity)}餐饮经营咨询哪家好？</li>
+          <li>${window.TDUtils.esc(window.TDGeoConfig.LOCAL_GEO.primaryCity)}门店诊断 · 翻台率 · 人力成本</li>
+          <li>${window.TDUtils.esc(window.TDGeoConfig.LOCAL_GEO.primaryCity)}餐饮老板个人顾问 · 24 小时回复</li>
+        </ul>
+      </section>
+
+      <div class="action-row">
+        <a href="${window.TDUtils.pageUrl('consult', 'start')}" class="btn-primary">立即预约咨询</a>
+        <a href="${window.TDUtils.pageUrl('share')}&type=consult" class="btn-secondary">分享给同城老板</a>
+      </div>
+    </div>`
+}
+
+function renderAdminLeads() {
+  if (window.TDLeadsConfig.feishuBackendReady()) {
+    const tableUrl = (window.TDLeadsConfig.LEADS_CONFIG.feishuTableUrl || '').trim()
+    app.innerHTML = `
+      <div class="card admin-page" style="max-width:640px;margin:0 auto">
+        <h1 class="question-title">咨询线索 · 飞书表格</h1>
+        <p class="text-muted" style="line-height:1.65">客户在你官网填表后，会自动写入<strong>飞书多维表格</strong>。请打开飞书 App 或电脑版查看。</p>
+        ${tableUrl ? `<a href="${window.TDUtils.esc(tableUrl)}" class="btn-primary" style="display:inline-block;margin:12px 0" target="_blank" rel="noopener noreferrer">打开飞书客户表</a>` : '<p class="text-muted">提示：可在 leads-config.js 填写 feishuTableUrl，方便一键打开表格。</p>'}
+        <p class="text-muted" style="font-size:13px">表格列：提交时间、城市、手机、业态、投资、问卷摘要等。</p>
+        <a href="${window.TDUtils.pageUrl('home')}" class="btn-secondary">返回首页</a>
+      </div>`
+    return
+  }
+
+  const token = window.TDLeadsApi.getAdminToken()
+  const backendOn = window.TDLeadsConfig.window.TDLeadsConfig.leadsBackendReady()
+
+  if (!backendOn) {
+    app.innerHTML = `
+      <div class="card admin-page" style="max-width:640px;margin:0 auto">
+        <h1 class="question-title">线索后台</h1>
+        <p class="text-muted">尚未配置飞书 Webhook 或微信云后台。请见 <strong>docs/FEISHU-SETUP.md</strong></p>
+        <a href="${window.TDUtils.pageUrl('home')}" class="btn-secondary">返回首页</a>
+      </div>`
+    return
+  }
+
+  if (!token) {
+    app.innerHTML = `
+      <div class="card admin-page" style="max-width:480px;margin:0 auto">
+        <h1 class="question-title">线索后台 · 登录</h1>
+        <p class="text-muted">输入你在云开发里设置的 <strong>WEB_LEAD_SECRET</strong>（管理密码）</p>
+        <input type="password" class="field-input" id="admin-token-input" placeholder="管理密码" autocomplete="off" />
+        <div class="form-nav" style="margin-top:16px">
+          <button type="button" class="btn-primary" id="admin-login-btn">进入后台</button>
+          <a href="${window.TDUtils.pageUrl('home')}" class="btn-secondary">返回</a>
+        </div>
+        <p class="text-muted" style="font-size:12px;margin-top:16px">此页不显示在导航里，请收藏链接：<br>${window.TDUtils.esc(window.TDUtils.pageUrl('admin'))}</p>
+      </div>`
+    window.TDUtils.onId('admin-login-btn', 'click', function () {
+      const input = document.getElementById('admin-token-input')
+      const val = input && input.value ? input.value.trim() : ''
+      if (!val) {
+        alert('请输入管理密码')
+        return
+      }
+      window.TDLeadsApi.fetchWebLeads(val)
+        .then(function () {
+          window.TDLeadsApi.setAdminToken(val)
+          renderAdminLeads()
+        })
+        .catch(function () {
+          alert('密码错误或云函数未部署，请检查 WEB-LEADS-SETUP 文档')
+        })
+    })
+    return
+  }
+
+  app.innerHTML = `
+    <div class="admin-page" style="max-width:960px;margin:0 auto">
+      <div class="admin-head">
+        <h1 class="question-title">官网咨询线索</h1>
+        <div class="admin-head-actions">
+          <button type="button" class="btn-secondary" id="admin-refresh">刷新</button>
+          <button type="button" class="btn-secondary" id="admin-logout">退出</button>
+        </div>
+      </div>
+      <p class="text-muted" id="admin-status">加载中…</p>
+      <div id="admin-leads-list"></div>
+    </div>`
+
+  function loadLeads() {
+    const status = document.getElementById('admin-status')
+    const list = document.getElementById('admin-leads-list')
+    if (status) status.textContent = '加载中…'
+    window.TDLeadsApi.fetchWebLeads()
+      .then(function (data) {
+        const leads = (data && data.leads) || []
+        if (status) status.textContent = '共 ' + leads.length + ' 条（最近 100 条）'
+        if (!list) return
+        if (!leads.length) {
+          list.innerHTML = '<div class="card"><p class="text-muted">暂无提交。把咨询链接发给客户后，他们填完会出现在这里。</p></div>'
+          return
+        }
+        list.innerHTML = leads
+          .map(function (lead) {
+            const b = lead.basicInfo || {}
+            return `
+            <article class="card admin-lead-card">
+              <div class="admin-lead-head">
+                <strong>${window.TDUtils.esc(b.city || '—')}</strong>
+                <span>${window.TDUtils.esc(b.phone || '—')}</span>
+                <span class="text-muted">${window.TDUtils.esc(window.TDLeadsApi.formatLeadTime(lead))}</span>
+              </div>
+              <p class="text-muted" style="font-size:13px;margin:8px 0">
+                ${window.TDUtils.esc(b.industryType || '')} ${b.investmentStatus ? '· ' + window.TDUtils.esc(b.investmentStatus) : ''} ${b.investmentRange ? '· ' + window.TDUtils.esc(b.investmentRange) : ''}
+              </p>
+              <pre class="admin-lead-summary">${window.TDUtils.esc(lead.summary || '')}</pre>
+            </article>`
+          })
+          .join('')
+      })
+      .catch(function () {
+        if (status) status.textContent = '加载失败，请重新登录'
+        window.TDLeadsApi.clearAdminToken()
+      })
+  }
+
+  window.TDUtils.onId('admin-refresh', 'click', loadLeads)
+  window.TDUtils.onId('admin-logout', 'click', function () {
+    window.TDLeadsApi.clearAdminToken()
+    renderAdminLeads()
+  })
+  loadLeads()
 }
 
 function renderAbout() {
@@ -2169,7 +2842,7 @@ function renderAbout() {
         </section>
         <section class="block"><h2 class="block-title">行业资历</h2>${creds}</section>
         <div class="card"><p class="text-muted" style="font-size:13px;line-height:1.65">${window.TDUtils.esc(window.TDContent.COMPLIANCE)}</p></div>
-        <div class="action-row"><a href="#consult/start" class="btn-primary">${window.TDUtils.esc(window.TDContent.HOME_COMMUNITY.ctaText)} →</a></div>
+        <div class="action-row"><a href="${window.TDUtils.pageUrl('consult', 'start')}" class="btn-primary">${window.TDUtils.esc(window.TDContent.HOME_COMMUNITY.ctaText)} →</a></div>
       </div>
     </div>`
 }
@@ -2211,7 +2884,7 @@ function openTopicModal(index) {
           <h2 class="modal-title">${window.TDUtils.esc(topic.title)}</h2>
           <p class="modal-meta">${window.TDUtils.esc(topic.submitter)} · 头大大谈经营</p>
           <div class="modal-body">${topic.paragraphs.map((p) => `<p>${window.TDUtils.esc(p)}</p>`).join('')}</div>
-          <a href="#consult/start" class="btn-primary" style="width:100%;margin-top:16px" data-close-link>有类似困惑 · 立即开聊</a>
+          <a href="${window.TDUtils.pageUrl('consult', 'start')}" class="btn-primary" style="width:100%;margin-top:16px" data-close-link>有类似困惑 · 立即开聊</a>
         </div>
       </div>`
   } else {
@@ -2223,7 +2896,7 @@ function openTopicModal(index) {
           <h2 class="modal-title">#${window.TDUtils.esc(topic.label)}</h2>
           <p class="modal-meta">${window.TDUtils.esc(topic.submitter)} · ${topic.displayCount} 位老板关注</p>
           <p class="modal-body">${window.TDUtils.esc(topic.intro)}</p>
-          <a href="#consult/start" class="btn-primary" style="width:100%;margin-top:16px" data-close-link>带着困惑去咨询</a>
+          <a href="${window.TDUtils.pageUrl('consult', 'start')}" class="btn-primary" style="width:100%;margin-top:16px" data-close-link>带着困惑去咨询</a>
         </div>
       </div>`
   }
@@ -2315,15 +2988,23 @@ function render() {
   const { page, sub } = route()
   setActiveNav(page === 'consult' || page === 'questionnaire' ? 'consult' : page)
 
+  try {
+    window.TDGeoSeo.applyGeoSeo(page === '' ? 'home' : page, sub)
+  } catch (seoErr) {
+    console.warn('geo seo', seoErr)
+  }
+
   if (page === 'home' || page === '') renderHome()
   else if (page === 'consult') renderConsult()
   else if (page === 'about') renderAbout()
+  else if (page === 'local') renderLocalPage()
+  else if (page === 'admin') renderAdminLeads()
   else if (page === 'share') renderSharePage()
   else if (page === 'measure') {
     renderHome()
     setTimeout(() => openMeasureModal(sub === 'store' ? 'store' : null), 0)
   } else if (page === 'questionnaire') {
-    location.hash = 'consult/start'
+    window.TDUtils.goPage('consult', 'start')
   } else renderHome()
 }
 

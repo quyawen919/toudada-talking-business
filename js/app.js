@@ -28,9 +28,14 @@ import {
   buildSummary
 } from './constants.js'
 import { createMeasureController } from './measure.js'
-import { img, esc, formatReplyDeadline, getConsultUrl, getHomeShareUrl, getGameShareUrl, getSharePageUrl, buildShareCode, copyText, showToast, onId, onSel } from './utils.js'
+import { LOCAL_GEO, localMapLinks } from './geo-config.js'
+import { applyGeoSeo } from './geo-seo.js'
+import { validateLeadPayload, submitLeadRemote, submitLeadLocal, fetchWebLeads, getAdminToken, setAdminToken, clearAdminToken, formatLeadTime } from './leads-api.js'
+import { leadsBackendReady, feishuBackendReady, LEADS_CONFIG } from './leads-config.js'
+import { img, esc, formatReplyDeadline, getConsultUrl, getHomeShareUrl, getGameShareUrl, getSharePageUrl, pageUrl, goPage, parsePageQuery, copyText, showToast, onId, onSel, closestEl } from './utils.js'
 
 const LEADS_KEY = 'toudada_web_leads'
+let lastSubmitMode = 'local_only'
 const app = document.getElementById('app')
 const modalRoot = document.getElementById('modal-root')
 let measureController = null
@@ -72,11 +77,10 @@ function ipGridItems() {
 }
 
 function route() {
-  const params = new URLSearchParams(location.search)
-  const fromQuery = params.get('p')
-  if (fromQuery) {
-    const sub = params.get('sub') || params.get('game') || ''
-    return { page: fromQuery, sub }
+  const q = parsePageQuery()
+  if (q.p) {
+    const sub = q.sub || q.game || ''
+    return { page: q.p, sub }
   }
   const hash = location.hash.replace(/^#/, '') || 'home'
   const parts = hash.split('/')
@@ -91,8 +95,8 @@ function setActiveNav(page) {
 }
 
 function renderSharePage() {
-  const params = new URLSearchParams(location.search)
-  const type = params.get('type') || 'home'
+  const q = parsePageQuery()
+  const type = q.type || 'home'
   const targets = {
     home: { title: '邀请朋友来逛逛', desc: '朋友点开链接，进入头大大谈经营首页', url: getHomeShareUrl(), cta: '进入首页', go: '?p=home' },
     game: { title: '邀请朋友来测一测', desc: '朋友点开链接，直接玩门店估值小游戏', url: getGameShareUrl(), cta: '我也测一测', go: '?p=measure&game=store' },
@@ -120,36 +124,21 @@ function renderSharePage() {
     QRCode.toCanvas(canvas, t.url, { width: 220, margin: 2, color: { dark: '#1a3668' } }).catch(() => {})
   }
 
-  onId('share-copy-link', 'click', async () => {
-    const ok = await copyText(t.url)
-    showToast(ok ? '链接已复制，去微信粘贴发送吧' : '复制失败，请长按链接手动复制')
+  onId('share-copy-link', 'click', function () {
+    copyText(t.url).then(function (ok) {
+      showToast(ok ? '链接已复制，去微信粘贴发送吧' : '复制失败，请长按链接手动复制')
+    })
   })
 }
 
 function bindSiteNav() {
-  function goHash(target) {
-    location.hash = target || 'home'
-    render()
-  }
-
-  function handleNavClick(e) {
-    const link = e.target.closest('a[href^="#"], a[href^="?"]')
-    if (!link) return
-    const href = link.getAttribute('href')
-    if (!href || href === '#') return
-    if (href.startsWith('?')) return
-    e.preventDefault()
-    goHash(href.slice(1))
-  }
-
-  document.addEventListener('click', handleNavClick, false)
-  document.addEventListener('touchend', handleNavClick, false)
-
-  document.addEventListener('click', (e) => {
-    const el = e.target.closest('[data-go]')
+  document.addEventListener('click', function (e) {
+    const el = closestEl(e.target, '[data-go]')
     if (!el) return
     e.preventDefault()
-    goHash(el.getAttribute('data-go'))
+    const go = el.getAttribute('data-go')
+    if (go === 'measure') goPage('measure', 'store')
+    else goPage(go || 'home')
   }, false)
 }
 
@@ -203,19 +192,6 @@ function renderHome() {
           </div>
         </section>
 
-        <section class="home-quick-nav" aria-label="快捷入口">
-          <a href="?p=consult" class="home-quick-card home-quick-card--consult">
-            <span class="home-quick-icon">💬</span>
-            <span class="home-quick-title">咨询</span>
-            <span class="home-quick-desc">30秒问卷 · 24小时内联系</span>
-          </a>
-          <a href="?p=about" class="home-quick-card home-quick-card--about">
-            <span class="home-quick-icon">👤</span>
-            <span class="home-quick-title">本人</span>
-            <span class="home-quick-desc">了解头大大 · 资历与案例</span>
-          </a>
-        </section>
-
         <section class="measure-teaser" id="open-measure" data-go="measure" role="button" tabindex="0">
           <span class="measure-teaser-badge">纯属娱乐</span>
           <h2 class="measure-teaser-title">头大大 · 测测</h2>
@@ -242,7 +218,7 @@ function renderHome() {
           <div class="feed-list">${feeds}</div>
         </section>
 
-        <section class="case-spotlight" data-nav="about">
+        <section class="case-spotlight" data-go="about" role="button" tabindex="0">
           <p class="case-spotlight-label">案例速递</p>
           <h3 class="case-spotlight-title">${esc(featured.title)}</h3>
           <p class="text-muted">${esc(featured.progress)}</p>
@@ -258,7 +234,7 @@ function renderHome() {
     el.addEventListener('click', () => openIpModal(el.dataset.ipKey))
   })
   onSel('[data-action="topic-submit"]', 'click', openTopicSubmitModal, app)
-  onSel('[data-nav="about"]', 'click', () => { location.hash = 'about' }, app)
+  onSel('[data-nav="about"]', 'click', () => { goPage('about') }, app)
 }
 
 function renderConsult() {
@@ -301,9 +277,9 @@ function renderConsult() {
         <h2 class="block-title">咨询流程</h2>
         ${steps.map((s) => `<div class="card step-card"><div class="step-num">${s.num}</div><div><p class="step-title">${esc(s.title)}</p><p class="step-desc">${esc(s.desc)}</p></div></div>`).join('')}
         <div class="action-row">
-          <a href="#consult/start" class="btn-primary">${hasDraft ? '重新开始' : '立即开聊'}</a>
-          ${hasDraft ? '<a href="#consult/start" class="btn-accent" id="continue-draft-btn">继续填写</a>' : ''}
-          <a href="#consult/progress" class="btn-secondary">查看我的进度</a>
+          <a href="${pageUrl('consult', 'start')}" class="btn-primary">${hasDraft ? '重新开始' : '立即开聊'}</a>
+          ${hasDraft ? `<a href="${pageUrl('consult', 'start')}" class="btn-accent" id="continue-draft-btn">继续填写</a>` : ''}
+          <a href="${pageUrl('consult', 'progress')}" class="btn-secondary">查看我的进度</a>
         </div>
         <section class="card">
           <div class="block-head"><h2 class="block-title">L1–L9 咨询梯度</h2></div>
@@ -312,10 +288,10 @@ function renderConsult() {
       </div>
     </div>`
 
-  onId('continue-draft', 'click', () => { location.hash = 'consult/start' })
+  onId('continue-draft', 'click', () => { goPage('consult', 'start') })
   onId('continue-draft-btn', 'click', (e) => {
     e.preventDefault()
-    location.hash = 'consult/start'
+    goPage('consult', 'start')
   })
   app.querySelectorAll('.product-row').forEach((row) => {
     row.addEventListener('click', () => {
@@ -379,7 +355,7 @@ function renderQuestionnaire() {
   })
 
   document.getElementById('q-prev').addEventListener('click', () => {
-    if (draft.qIndex === 0) location.hash = 'consult'
+    if (draft.qIndex === 0) goPage('consult')
     else {
       draft.qIndex -= 1
       renderQuestionnaire()
@@ -388,7 +364,7 @@ function renderQuestionnaire() {
 
   document.getElementById('q-next').addEventListener('click', () => {
     if (draft.qIndex >= QUESTIONS.length - 1) {
-      location.hash = 'consult/basic'
+      goPage('consult', 'basic')
       return
     }
     draft.qIndex += 1
@@ -398,7 +374,7 @@ function renderQuestionnaire() {
 
 function renderBasicInfo() {
   if (!draft.answers.q1_stage) {
-    location.hash = 'consult/start'
+    goPage('consult', 'start')
     return
   }
 
@@ -450,7 +426,7 @@ function renderBasicInfo() {
   })
 
   onId('basic-prev', 'click', () => {
-    if (step === 1) location.hash = 'consult/start'
+    if (step === 1) goPage('consult', 'start')
     else {
       draft.basicStep = 1
       renderBasicInfo()
@@ -506,20 +482,42 @@ function submitConsult() {
     stage: '线索',
     createdAt: new Date().toISOString()
   }
-  const leads = JSON.parse(localStorage.getItem(LEADS_KEY) || '[]')
-  leads.unshift(record)
-  localStorage.setItem(LEADS_KEY, JSON.stringify(leads))
-  localStorage.setItem('toudada_last_lead_id', record.id)
-  localStorage.removeItem(PENDING_CONSULT_KEY)
-  draft.answers = {}
-  draft.basic = {}
-  draft.qIndex = 0
-  draft.basicStep = 1
-  location.hash = 'consult/success'
+  const err = validateLeadPayload(record)
+  if (err) {
+    alert(err)
+    return
+  }
+  submitLeadRemote(record)
+    .then(function (remote) {
+      if (remote.ok) return remote
+      return submitLeadLocal(record, LEADS_KEY)
+    })
+    .catch(function () {
+      return submitLeadLocal(record, LEADS_KEY)
+    })
+    .then(function (result) {
+      lastSubmitMode = result.reason || 'local_storage'
+      localStorage.setItem('toudada_last_lead_id', record.id)
+      localStorage.removeItem(PENDING_CONSULT_KEY)
+      draft.answers = {}
+      draft.basic = {}
+      draft.qIndex = 0
+      draft.basicStep = 1
+      goPage('consult', 'success')
+    })
 }
 
 function renderSuccess() {
   const deadline = formatReplyDeadline(24)
+  const cloudOk = lastSubmitMode === 'cloud'
+  const feishuOk = lastSubmitMode === 'feishu'
+  let backendNote = '（演示模式：信息暂存在您本机浏览器；配置飞书 Webhook 后老板可在表格中查看。）'
+  if (feishuOk) {
+    backendNote = '您的信息已提交，头大大会在 24 小时内联系您。'
+  } else if (cloudOk) {
+    backendNote = '您的信息已安全提交，头大大会在后台收到并尽快联系您。'
+  }
+
   app.innerHTML = `
     <div style="max-width:640px;margin:0 auto">
       <section class="success-hero">
@@ -531,10 +529,11 @@ function renderSuccess() {
         <p><strong>预计回复</strong><br><span class="text-muted">24 小时内（不晚于 ${esc(deadline)}）</span></p>
         <hr style="border:none;border-top:1px solid var(--color-border);margin:16px 0" />
         <p><strong>下一步</strong><br><span class="text-muted">头大大将根据问卷与您初步沟通</span></p>
+        <p class="text-muted" style="font-size:13px;margin-top:12px">${esc(backendNote)}</p>
       </div>
       <div class="action-row">
-        <a href="#consult/progress" class="btn-primary">查看我的进度</a>
-        <a href="#home" class="btn-secondary">返回首页</a>
+        <a href="${pageUrl('consult', 'progress')}" class="btn-primary">查看我的进度</a>
+        <a href="${pageUrl('home')}" class="btn-secondary">返回首页</a>
       </div>
     </div>`
 }
@@ -549,22 +548,207 @@ function renderProgress() {
       <div class="card" style="max-width:560px;margin:0 auto;text-align:center">
         <h2>暂无咨询记录</h2>
         <p class="text-muted">提交问卷后，可在此查看进度</p>
-        <a href="#consult/start" class="btn-primary">立即开聊</a>
+        <a href="${pageUrl('consult', 'start')}" class="btn-primary">立即开聊</a>
       </div>`
     return
   }
+
+  const safeSummary = esc(lead.summary).replace(/1\d{10}/g, function (m) {
+    return m.slice(0, 3) + '****' + m.slice(-4)
+  })
 
   app.innerHTML = `
     <div class="card" style="max-width:640px;margin:0 auto">
       <h1 class="question-title">我的咨询进度</h1>
       <p class="text-muted">提交时间：${new Date(lead.createdAt).toLocaleString('zh-CN')}</p>
       <p style="font-size:18px;font-weight:700;color:var(--color-mint);margin:20px 0">当前阶段：${esc(lead.stage)}</p>
-      <pre style="white-space:pre-wrap;font-size:13px;background:rgba(26,54,104,0.04);padding:16px;border-radius:12px;line-height:1.6">${esc(lead.summary)}</pre>
+      <pre style="white-space:pre-wrap;font-size:13px;background:rgba(26,54,104,0.04);padding:16px;border-radius:12px;line-height:1.6">${safeSummary}</pre>
       <div class="action-row">
-        <a href="#consult" class="btn-secondary">返回咨询</a>
-        <a href="#home" class="btn-primary">回首页</a>
+        <a href="${pageUrl('consult')}" class="btn-secondary">返回咨询</a>
+        <a href="${pageUrl('home')}" class="btn-primary">回首页</a>
       </div>
     </div>`
+}
+
+function renderLocalPage() {
+  const maps = localMapLinks()
+  const cities = LOCAL_GEO.serviceCities
+    .map((city) => `<span class="local-city-chip">${esc(city)}</span>`)
+    .join('')
+  const listings = LOCAL_GEO.mapListings
+    .map(function (item) {
+      const done = item.status === 'live'
+      return `
+      <div class="local-map-row">
+        <span class="local-map-name">${esc(item.name)}</span>
+        <span class="local-map-status ${done ? 'local-map-status--live' : ''}">${done ? '已入驻' : '待认领'}</span>
+        <a href="${esc(item.claimUrl)}" class="local-map-link" target="_blank" rel="noopener noreferrer">认领指引</a>
+      </div>`
+    })
+    .join('')
+
+  app.innerHTML = `
+    <div class="page-wrap local-page">
+      <section class="page-hero-band local-hero">
+        <p class="page-hero-badge">同城 · ${esc(LOCAL_GEO.regionLabel)}</p>
+        <h1 class="page-hero-title">${esc(LOCAL_GEO.primaryCity)}餐饮门店经营咨询</h1>
+        <p class="page-hero-desc">个人 OPC · 线上下单 · 预约对接 · 地图可找</p>
+      </section>
+
+      <section class="card">
+        <h2 class="block-title">服务城市</h2>
+        <div class="local-city-grid">${cities}</div>
+        <p class="text-muted" style="margin-top:12px;line-height:1.6">主营 ${esc(LOCAL_GEO.industries.join('、'))} · ${esc(LOCAL_GEO.businessHours)}</p>
+      </section>
+
+      <section class="card local-map-card">
+        <h2 class="block-title">地图找店 · 一键导航</h2>
+        <p class="text-muted">${esc(LOCAL_GEO.address)}</p>
+        <p class="text-muted" style="font-size:13px">${esc(LOCAL_GEO.wechatNote)}</p>
+        <div class="local-map-actions">
+          <a href="${esc(maps.amap)}" class="btn-primary local-map-btn" target="_blank" rel="noopener noreferrer">高德地图</a>
+          <a href="${esc(maps.baidu)}" class="btn-secondary local-map-btn" target="_blank" rel="noopener noreferrer">百度地图</a>
+          <a href="${esc(maps.tencent)}" class="btn-secondary local-map-btn" target="_blank" rel="noopener noreferrer">腾讯地图</a>
+        </div>
+        <a href="${esc(maps.amapNav)}" class="local-nav-link" target="_blank" rel="noopener noreferrer">驾车导航 →</a>
+      </section>
+
+      <section class="card">
+        <h2 class="block-title">地图平台入驻（运营清单）</h2>
+        <p class="text-muted" style="font-size:13px;margin-bottom:12px">Marketing 认领 POI 后，在 web/js/geo-config.js 把 status 改为 live</p>
+        ${listings}
+      </section>
+
+      <section class="card local-copy-block">
+        <h2 class="block-title">同城老板常见搜索</h2>
+        <ul class="local-faq">
+          <li>${esc(LOCAL_GEO.primaryCity)}餐饮经营咨询哪家好？</li>
+          <li>${esc(LOCAL_GEO.primaryCity)}门店诊断 · 翻台率 · 人力成本</li>
+          <li>${esc(LOCAL_GEO.primaryCity)}餐饮老板个人顾问 · 24 小时回复</li>
+        </ul>
+      </section>
+
+      <div class="action-row">
+        <a href="${pageUrl('consult', 'start')}" class="btn-primary">立即预约咨询</a>
+        <a href="${pageUrl('share')}&type=consult" class="btn-secondary">分享给同城老板</a>
+      </div>
+    </div>`
+}
+
+function renderAdminLeads() {
+  if (feishuBackendReady()) {
+    const tableUrl = (LEADS_CONFIG.feishuTableUrl || '').trim()
+    app.innerHTML = `
+      <div class="card admin-page" style="max-width:640px;margin:0 auto">
+        <h1 class="question-title">咨询线索 · 飞书表格</h1>
+        <p class="text-muted" style="line-height:1.65">客户在你官网填表后，会自动写入<strong>飞书多维表格</strong>。请打开飞书 App 或电脑版查看。</p>
+        ${tableUrl ? `<a href="${esc(tableUrl)}" class="btn-primary" style="display:inline-block;margin:12px 0" target="_blank" rel="noopener noreferrer">打开飞书客户表</a>` : '<p class="text-muted">提示：可在 leads-config.js 填写 feishuTableUrl，方便一键打开表格。</p>'}
+        <p class="text-muted" style="font-size:13px">表格列：提交时间、城市、手机、业态、投资、问卷摘要等。</p>
+        <a href="${pageUrl('home')}" class="btn-secondary">返回首页</a>
+      </div>`
+    return
+  }
+
+  const token = getAdminToken()
+  const backendOn = leadsBackendReady()
+
+  if (!backendOn) {
+    app.innerHTML = `
+      <div class="card admin-page" style="max-width:640px;margin:0 auto">
+        <h1 class="question-title">线索后台</h1>
+        <p class="text-muted">尚未配置飞书 Webhook 或微信云后台。请见 <strong>docs/FEISHU-SETUP.md</strong></p>
+        <a href="${pageUrl('home')}" class="btn-secondary">返回首页</a>
+      </div>`
+    return
+  }
+
+  if (!token) {
+    app.innerHTML = `
+      <div class="card admin-page" style="max-width:480px;margin:0 auto">
+        <h1 class="question-title">线索后台 · 登录</h1>
+        <p class="text-muted">输入你在云开发里设置的 <strong>WEB_LEAD_SECRET</strong>（管理密码）</p>
+        <input type="password" class="field-input" id="admin-token-input" placeholder="管理密码" autocomplete="off" />
+        <div class="form-nav" style="margin-top:16px">
+          <button type="button" class="btn-primary" id="admin-login-btn">进入后台</button>
+          <a href="${pageUrl('home')}" class="btn-secondary">返回</a>
+        </div>
+        <p class="text-muted" style="font-size:12px;margin-top:16px">此页不显示在导航里，请收藏链接：<br>${esc(pageUrl('admin'))}</p>
+      </div>`
+    onId('admin-login-btn', 'click', function () {
+      const input = document.getElementById('admin-token-input')
+      const val = input && input.value ? input.value.trim() : ''
+      if (!val) {
+        alert('请输入管理密码')
+        return
+      }
+      fetchWebLeads(val)
+        .then(function () {
+          setAdminToken(val)
+          renderAdminLeads()
+        })
+        .catch(function () {
+          alert('密码错误或云函数未部署，请检查 WEB-LEADS-SETUP 文档')
+        })
+    })
+    return
+  }
+
+  app.innerHTML = `
+    <div class="admin-page" style="max-width:960px;margin:0 auto">
+      <div class="admin-head">
+        <h1 class="question-title">官网咨询线索</h1>
+        <div class="admin-head-actions">
+          <button type="button" class="btn-secondary" id="admin-refresh">刷新</button>
+          <button type="button" class="btn-secondary" id="admin-logout">退出</button>
+        </div>
+      </div>
+      <p class="text-muted" id="admin-status">加载中…</p>
+      <div id="admin-leads-list"></div>
+    </div>`
+
+  function loadLeads() {
+    const status = document.getElementById('admin-status')
+    const list = document.getElementById('admin-leads-list')
+    if (status) status.textContent = '加载中…'
+    fetchWebLeads()
+      .then(function (data) {
+        const leads = (data && data.leads) || []
+        if (status) status.textContent = '共 ' + leads.length + ' 条（最近 100 条）'
+        if (!list) return
+        if (!leads.length) {
+          list.innerHTML = '<div class="card"><p class="text-muted">暂无提交。把咨询链接发给客户后，他们填完会出现在这里。</p></div>'
+          return
+        }
+        list.innerHTML = leads
+          .map(function (lead) {
+            const b = lead.basicInfo || {}
+            return `
+            <article class="card admin-lead-card">
+              <div class="admin-lead-head">
+                <strong>${esc(b.city || '—')}</strong>
+                <span>${esc(b.phone || '—')}</span>
+                <span class="text-muted">${esc(formatLeadTime(lead))}</span>
+              </div>
+              <p class="text-muted" style="font-size:13px;margin:8px 0">
+                ${esc(b.industryType || '')} ${b.investmentStatus ? '· ' + esc(b.investmentStatus) : ''} ${b.investmentRange ? '· ' + esc(b.investmentRange) : ''}
+              </p>
+              <pre class="admin-lead-summary">${esc(lead.summary || '')}</pre>
+            </article>`
+          })
+          .join('')
+      })
+      .catch(function () {
+        if (status) status.textContent = '加载失败，请重新登录'
+        clearAdminToken()
+      })
+  }
+
+  onId('admin-refresh', 'click', loadLeads)
+  onId('admin-logout', 'click', function () {
+    clearAdminToken()
+    renderAdminLeads()
+  })
+  loadLeads()
 }
 
 function renderAbout() {
@@ -630,7 +814,7 @@ function renderAbout() {
         </section>
         <section class="block"><h2 class="block-title">行业资历</h2>${creds}</section>
         <div class="card"><p class="text-muted" style="font-size:13px;line-height:1.65">${esc(COMPLIANCE)}</p></div>
-        <div class="action-row"><a href="#consult/start" class="btn-primary">${esc(HOME_COMMUNITY.ctaText)} →</a></div>
+        <div class="action-row"><a href="${pageUrl('consult', 'start')}" class="btn-primary">${esc(HOME_COMMUNITY.ctaText)} →</a></div>
       </div>
     </div>`
 }
@@ -672,7 +856,7 @@ function openTopicModal(index) {
           <h2 class="modal-title">${esc(topic.title)}</h2>
           <p class="modal-meta">${esc(topic.submitter)} · 头大大谈经营</p>
           <div class="modal-body">${topic.paragraphs.map((p) => `<p>${esc(p)}</p>`).join('')}</div>
-          <a href="#consult/start" class="btn-primary" style="width:100%;margin-top:16px" data-close-link>有类似困惑 · 立即开聊</a>
+          <a href="${pageUrl('consult', 'start')}" class="btn-primary" style="width:100%;margin-top:16px" data-close-link>有类似困惑 · 立即开聊</a>
         </div>
       </div>`
   } else {
@@ -684,7 +868,7 @@ function openTopicModal(index) {
           <h2 class="modal-title">#${esc(topic.label)}</h2>
           <p class="modal-meta">${esc(topic.submitter)} · ${topic.displayCount} 位老板关注</p>
           <p class="modal-body">${esc(topic.intro)}</p>
-          <a href="#consult/start" class="btn-primary" style="width:100%;margin-top:16px" data-close-link>带着困惑去咨询</a>
+          <a href="${pageUrl('consult', 'start')}" class="btn-primary" style="width:100%;margin-top:16px" data-close-link>带着困惑去咨询</a>
         </div>
       </div>`
   }
@@ -776,15 +960,23 @@ function render() {
   const { page, sub } = route()
   setActiveNav(page === 'consult' || page === 'questionnaire' ? 'consult' : page)
 
+  try {
+    applyGeoSeo(page === '' ? 'home' : page, sub)
+  } catch (seoErr) {
+    console.warn('geo seo', seoErr)
+  }
+
   if (page === 'home' || page === '') renderHome()
   else if (page === 'consult') renderConsult()
   else if (page === 'about') renderAbout()
+  else if (page === 'local') renderLocalPage()
+  else if (page === 'admin') renderAdminLeads()
   else if (page === 'share') renderSharePage()
   else if (page === 'measure') {
     renderHome()
     setTimeout(() => openMeasureModal(sub === 'store' ? 'store' : null), 0)
   } else if (page === 'questionnaire') {
-    location.hash = 'consult/start'
+    goPage('consult', 'start')
   } else renderHome()
 }
 

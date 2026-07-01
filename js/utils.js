@@ -30,48 +30,89 @@ export function formatReplyDeadline(hours) {
   return `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+export function getSiteBase() {
+  return window.location.href.split('#')[0].split('?')[0]
+}
+
+/** 微信里用 ?p= 比 # 更可靠 */
+export function pageUrl(page, sub) {
+  const base = getSiteBase()
+  const p = page || 'home'
+  if (p === 'home' && !sub) return `${base}?p=home`
+  if (p === 'measure' && sub === 'store') return `${base}?p=measure&game=store`
+  if (sub) return `${base}?p=${encodeURIComponent(p)}&sub=${encodeURIComponent(sub)}`
+  return `${base}?p=${encodeURIComponent(p)}`
+}
+
+export function goPage(page, sub) {
+  window.location.href = pageUrl(page, sub)
+}
+
+export function parsePageQuery() {
+  const out = {}
+  const search = window.location.search || ''
+  if (!search) return out
+  if (typeof URLSearchParams !== 'undefined') {
+    const params = new URLSearchParams(search)
+    params.forEach((v, k) => {
+      out[k] = v
+    })
+    return out
+  }
+  search.replace(/^\?/, '').split('&').forEach((pair) => {
+    if (!pair) return
+    const i = pair.indexOf('=')
+    const k = decodeURIComponent(i >= 0 ? pair.slice(0, i) : pair)
+    const v = decodeURIComponent(i >= 0 ? pair.slice(i + 1) : '')
+    out[k] = v
+  })
+  return out
+}
+
 export function getConsultUrl() {
-  const base = window.location.href.split('#')[0].split('?')[0]
-  return `${base}?p=consult`
+  return pageUrl('consult')
 }
 
 export function getHomeShareUrl() {
-  const base = window.location.href.split('#')[0].split('?')[0]
-  return `${base}?p=home`
+  return pageUrl('home')
 }
 
 export function getGameShareUrl() {
-  const base = window.location.href.split('#')[0].split('?')[0]
-  return `${base}?p=measure&game=store`
+  return pageUrl('measure', 'store')
 }
 
 export function getSharePageUrl(type) {
-  const base = window.location.href.split('#')[0].split('?')[0]
   const t = type || 'home'
-  return `${base}?p=share&type=${t}`
+  return `${getSiteBase()}?p=share&type=${encodeURIComponent(t)}`
 }
 
-/** 娱乐向分享口令（便于朋友圈/群聊复制） */
 export function buildShareCode(result) {
   const n = result && result.mid ? Math.round(result.mid) : 0
   return 'TD' + String((n * 7 + (Date.now() % 10000)) % 10000).padStart(4, '0')
 }
 
-export async function copyText(text) {
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(text)
-      return true
+export function copyText(text) {
+  return new Promise(function (resolve) {
+    function fallback() {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.cssText = 'position:fixed;left:-9999px;top:0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      document.body.removeChild(ta)
+      resolve(!!ok)
     }
-  } catch (_) { /* fallback below */ }
-  const ta = document.createElement('textarea')
-  ta.value = text
-  ta.style.cssText = 'position:fixed;left:-9999px;top:0'
-  document.body.appendChild(ta)
-  ta.select()
-  const ok = document.execCommand('copy')
-  document.body.removeChild(ta)
-  return ok
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          resolve(true)
+        }).catch(fallback)
+        return
+      }
+    } catch (_) { /* use fallback */ }
+    fallback()
+  })
 }
 
 export function showToast(msg) {
@@ -85,7 +126,9 @@ export function showToast(msg) {
   el.textContent = msg
   el.classList.add('visible')
   clearTimeout(el._hideTimer)
-  el._hideTimer = setTimeout(() => el.classList.remove('visible'), 2400)
+  el._hideTimer = setTimeout(function () {
+    el.classList.remove('visible')
+  }, 2400)
 }
 
 export function onId(id, event, fn) {
@@ -96,4 +139,13 @@ export function onId(id, event, fn) {
 export function onSel(sel, event, fn, root) {
   const el = (root || document).querySelector(sel)
   if (el) el.addEventListener(event, fn)
+}
+
+export function closestEl(node, selector) {
+  let el = node
+  while (el && el.nodeType === 1) {
+    if (el.matches && el.matches(selector)) return el
+    el = el.parentElement
+  }
+  return null
 }

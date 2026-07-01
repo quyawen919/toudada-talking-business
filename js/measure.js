@@ -205,15 +205,17 @@ export function createMeasureController(root, { onClose }) {
       render()
     }, root)
     onSel('[data-action="close"]', 'click', () => onClose(), root)
-    onSel('[data-action="copy-share"]', 'click', async () => {
+    onSel('[data-action="copy-share"]', 'click', function () {
       const link = getGameShareUrl()
-      const msg = `${state.shareText}\n${link}`
-      const ok = await copyText(msg)
-      showToast(ok ? '已复制，去微信粘贴发送吧' : '复制失败，请长按文案手动复制')
+      const msg = state.shareText + '\n' + link
+      copyText(msg).then(function (ok) {
+        showToast(ok ? '已复制，去微信粘贴发送吧' : '复制失败，请长按文案手动复制')
+      })
     }, root)
-    onSel('[data-action="copy-link"]', 'click', async () => {
-      const ok = await copyText(getGameShareUrl())
-      showToast(ok ? '链接已复制' : '复制失败，请手动复制链接')
+    onSel('[data-action="copy-link"]', 'click', function () {
+      copyText(getGameShareUrl()).then(function (ok) {
+        showToast(ok ? '链接已复制' : '复制失败，请手动复制链接')
+      })
     }, root)
     onSel('[data-action="replay"]', 'click', () => {
       clearTimers()

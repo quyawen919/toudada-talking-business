@@ -3,8 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="description" content="头大大谈经营 · 提升经营思维 · 30秒问卷 · 24小时内联系" />
-  <title>头大大谈经营</title>
+  <meta name="description" content="头大大谈经营 · 成都重庆餐饮门店经营咨询 · 30秒问卷 · 24小时内联系" />
+  <meta name="keywords" content="成都餐饮咨询,餐饮门店诊断,同城经营顾问,头大大谈经营" />
+  <meta name="robots" content="index,follow" />
+  <meta name="geo.region" content="CN-SC" />
+  <meta name="geo.placename" content="成都" />
+  <link rel="canonical" href="https://quyawen919.github.io/toudada-talking-business/" />
+  <title>头大大谈经营 · 成都餐饮门店经营咨询</title>
   <script>
     (function () {
       var path = location.pathname || ''
@@ -44,7 +49,7 @@
 
   <footer class="site-footer">
     <p>头大大谈经营 · 个人分享与咨询预约 · 纯属娱乐测测不构成投资建议</p>
-    <p class="text-muted">不承诺保证盈利 · 不提供刷单买评</p>
+    <p class="text-muted">不承诺保证盈利 · 不提供刷单买评 · <a href="?p=local" class="footer-link">同城服务 · 地图入驻</a></p>
   </footer>
 
   <nav class="mobile-tabbar" aria-label="底部导航">
@@ -64,7 +69,22 @@
 
   <div id="modal-root"></div>
 
-  <script src="js/bundle.js" charset="UTF-8"></script>
+  <script>
+    if (!Element.prototype.matches) {
+      Element.prototype.matches = Element.prototype.msMatchesSelector || Element.prototype.webkitMatchesSelector
+    }
+    if (!Element.prototype.closest) {
+      Element.prototype.closest = function (selector) {
+        var el = this
+        while (el && el.nodeType === 1) {
+          if (el.matches(selector)) return el
+          el = el.parentElement
+        }
+        return null
+      }
+    }
+  </script>
+  <script src="js/bundle.js" charset="UTF-8" defer></script>
   <script>
     document.addEventListener('DOMContentLoaded', function () {
       var logo = document.querySelector('.site-logo-img')
@@ -72,6 +92,17 @@
         logo.src = window.__SITE_IMG_BASE + '/brand/toudada-talk-business-logo.png'
       }
     })
+    setTimeout(function () {
+      var app = document.getElementById('app')
+      if (!app || app.innerText.indexOf('加载中') < 0) return
+      app.innerHTML =
+        '<div class="card" style="padding:24px;text-align:center">' +
+        '<h2 style="margin:0 0 12px">页面加载未完成</h2>' +
+        '<p class="text-muted" style="line-height:1.6">微信内可能拦截了脚本。请点右上角 <strong>··· → 在浏览器中打开</strong></p>' +
+        '<p style="margin-top:16px"><a href="?p=home" class="btn-primary" style="display:inline-block;margin:4px">首页</a> ' +
+        '<a href="?p=consult" class="btn-secondary" style="display:inline-block;margin:4px">咨询</a> ' +
+        '<a href="?p=about" class="btn-secondary" style="display:inline-block;margin:4px">本人</a></p></div>'
+    }, 5000)
   </script>
   <script>
     window.addEventListener('error', function (e) {
