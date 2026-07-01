@@ -53,7 +53,19 @@ function pageUrl(page, sub) {
 }
 
 function goPage(page, sub) {
-  window.location.href = pageUrl(page, sub)
+  const url = pageUrl(page, sub)
+  try {
+    if (window.history && window.history.pushState) {
+      window.history.pushState({ tdPage: page, tdSub: sub || '' }, '', url)
+      if (typeof window.__tdRender === 'function') {
+        window.__tdRender()
+        return
+      }
+    }
+  } catch (e) {
+    /* full navigation fallback */
+  }
+  window.location.href = url
 }
 
 function parsePageQuery() {
@@ -2070,24 +2082,70 @@ let measureController = null
 let expandedProduct = null
 
 const draft = {
-  answers: loadDraft(),
+  answers: {},
   basic: {},
   qIndex: 0,
   basicStep: 1
 }
 
-function loadDraft() {
+function initDraftFromStorage() {
   try {
     const raw = localStorage.getItem(window.TDConstants.PENDING_CONSULT_KEY)
-    return raw ? JSON.parse(raw) : {}
+    if (!raw) return
+    const data = JSON.parse(raw)
+    if (data && data.answers && typeof data.answers === 'object') {
+      draft.answers = data.answers
+      draft.qIndex = typeof data.qIndex === 'number' ? data.qIndex : 0
+      draft.basicStep = typeof data.basicStep === 'number' ? data.basicStep : 1
+      draft.basic = data.basic && typeof data.basic === 'object' ? data.basic : {}
+    } else if (data && typeof data === 'object') {
+      draft.answers = data
+    }
   } catch (e) {
-    return {}
+    /* ignore */
+  }
+}
+
+function isQuestionnaireComplete() {
+  return window.TDConstants.QUESTIONS.every(function (q) {
+    const v = draft.answers[q.field]
+    if (q.type === 'multiple') return Array.isArray(v) && v.length > 0
+    return !!v
+  })
+}
+
+function restartConsult() {
+  localStorage.removeItem(window.TDConstants.PENDING_CONSULT_KEY)
+  draft.answers = {}
+  draft.basic = {}
+  draft.qIndex = 0
+  draft.basicStep = 1
+  window.TDUtils.goPage('consult', 'start')
+}
+
+function resumeConsult() {
+  initDraftFromStorage()
+  if (isQuestionnaireComplete()) {
+    window.TDUtils.goPage('consult', 'basic')
+  } else {
+    if (draft.qIndex >= window.TDConstants.QUESTIONS.length) draft.qIndex = window.TDConstants.QUESTIONS.length - 1
+    window.TDUtils.goPage('consult', 'start')
   }
 }
 
 function saveDraft() {
-  localStorage.setItem(window.TDConstants.PENDING_CONSULT_KEY, JSON.stringify(draft.answers))
+  localStorage.setItem(
+    window.TDConstants.PENDING_CONSULT_KEY,
+    JSON.stringify({
+      answers: draft.answers,
+      qIndex: draft.qIndex,
+      basicStep: draft.basicStep,
+      basic: draft.basic
+    })
+  )
 }
+
+initDraftFromStorage()
 
 function hotTopics() {
   const founder = window.TDContent.FOUNDER_TOPICS.map((t) => ({ ...t, displayBadge: '阅读', displayCount: 0 }))
@@ -2275,7 +2333,7 @@ function renderConsult() {
   const hasDraft = Object.keys(draft.answers).length > 0
   const steps = [
     { num: 1, title: '5 道经营勾选题', desc: '深度了解门店现状与诉求' },
-    { num: 2, title: '补充基础信息', desc: '城市、电话、业态与投资情况' },
+    { num: 2, title: '补充基础信息', desc: '第 1 步：业态与投资 · 第 2 步：城市、电话与隐私确认' },
     { num: 3, title: '24 小时内联系', desc: '头大大根据问卷初步沟通' }
   ]
 
@@ -2304,10 +2362,10 @@ function renderConsult() {
         </section>
         <h2 class="block-title">咨询流程</h2>
         ${steps.map((s) => `<div class="card step-card"><div class="step-num">${s.num}</div><div><p class="step-title">${window.TDUtils.esc(s.title)}</p><p class="step-desc">${window.TDUtils.esc(s.desc)}</p></div></div>`).join('')}
-        <div class="action-row">
-          <a href="${window.TDUtils.pageUrl('consult', 'start')}" class="btn-primary">${hasDraft ? '重新开始' : '立即开聊'}</a>
-          ${hasDraft ? `<a href="${window.TDUtils.pageUrl('consult', 'start')}" class="btn-accent" id="continue-draft-btn">继续填写</a>` : ''}
-          <a href="${window.TDUtils.pageUrl('consult', 'progress')}" class="btn-secondary">查看我的进度</a>
+        <div class="action-row consult-actions">
+          <button type="button" class="btn-primary" id="consult-start">${hasDraft ? '重新开始' : '立即开聊'}</button>
+          ${hasDraft ? '<button type="button" class="btn-accent" id="consult-continue">继续填写</button>' : ''}
+          <button type="button" class="btn-secondary" id="consult-progress">查看我的进度</button>
         </div>
         <section class="card">
           <div class="block-head"><h2 class="block-title">L1–L9 咨询梯度</h2></div>
@@ -2316,10 +2374,14 @@ function renderConsult() {
       </div>
     </div>`
 
-  window.TDUtils.onId('continue-draft', 'click', () => { window.TDUtils.goPage('consult', 'start') })
-  window.TDUtils.onId('continue-draft-btn', 'click', (e) => {
-    e.preventDefault()
-    window.TDUtils.goPage('consult', 'start')
+  window.TDUtils.onId('continue-draft', 'click', resumeConsult)
+  window.TDUtils.onId('consult-start', 'click', function () {
+    if (hasDraft) restartConsult()
+    else window.TDUtils.goPage('consult', 'start')
+  })
+  window.TDUtils.onId('consult-continue', 'click', resumeConsult)
+  window.TDUtils.onId('consult-progress', 'click', function () {
+    window.TDUtils.goPage('consult', 'progress')
   })
   app.querySelectorAll('.product-row').forEach((row) => {
     row.addEventListener('click', () => {
@@ -2330,45 +2392,92 @@ function renderConsult() {
 }
 
 function renderQuestionnaire() {
+  initDraftFromStorage()
   const q = window.TDConstants.QUESTIONS[draft.qIndex]
   const progress = ((draft.qIndex + 1) / window.TDConstants.QUESTIONS.length) * 100
   const field = q.field
-  const selected = draft.answers[field]
-  const selectedArr = Array.isArray(selected) ? selected : selected ? [selected] : []
+  const isLast = draft.qIndex >= window.TDConstants.QUESTIONS.length - 1
+  const isMulti = q.type === 'multiple'
+  let selected = draft.answers[field]
 
+  if (isMulti) {
+    if (!Array.isArray(selected)) {
+      selected = selected ? [selected] : []
+      draft.answers[field] = selected
+    }
+  }
+
+  const selectedArr = isMulti ? selected : []
   const options = q.options
-    .map((opt) => {
-      const isSelected = q.type === 'multiple' ? selectedArr.includes(opt) : selected === opt
-      return `<button type="button" class="option-item ${isSelected ? 'selected' : ''}" data-option="${window.TDUtils.esc(opt)}">${window.TDUtils.esc(opt)}</button>`
+    .map(function (opt, i) {
+      const isSelected = isMulti ? selectedArr.indexOf(opt) >= 0 : selected === opt
+      return (
+        '<button type="button" class="option-item' +
+        (isSelected ? ' selected' : '') +
+        '" data-qidx="' +
+        i +
+        '">' +
+        window.TDUtils.esc(opt) +
+        '</button>'
+      )
     })
     .join('')
 
-  app.innerHTML = `
-    <div class="card question-page" style="max-width:720px;margin:0 auto">
-      <div class="progress-bar"><div class="progress-fill" style="width:${progress}%"></div></div>
-      <p class="text-muted">第 ${draft.qIndex + 1} / ${window.TDConstants.QUESTIONS.length} 题</p>
-      <h1 class="question-title">${window.TDUtils.esc(q.title)}</h1>
-      <p class="question-sub">${window.TDUtils.esc(q.subtitle)}</p>
-      <div class="option-list">${options}</div>
-      <div class="form-nav">
-        <button type="button" class="btn-secondary" id="q-prev">${draft.qIndex === 0 ? '返回咨询' : '上一题'}</button>
-        <button type="button" class="btn-primary" id="q-next" disabled>下一题</button>
-      </div>
-    </div>`
+  const multiHint = isMulti
+    ? '<p class="question-hint">已选 ' +
+      selectedArr.length +
+      (q.max ? ' / ' + q.max : '') +
+      ' 项 · 点一下选中，再点取消</p>'
+    : ''
 
-  const canNext = q.type === 'multiple' ? selectedArr.length > 0 : !!selected
-  document.getElementById('q-next').disabled = !canNext
+  const canNext = isMulti ? selectedArr.length > 0 : !!selected
+  const nextLabel = isLast ? '下一步 · 补充信息（1/2）' : '下一题'
 
-  app.querySelectorAll('.option-item').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const opt = btn.dataset.option
-      if (q.type === 'multiple') {
-        let arr = [...selectedArr]
-        const idx = arr.indexOf(opt)
-        if (idx >= 0) arr.splice(idx, 1)
-        else {
-          if (arr.length >= (q.max || 3)) {
-            alert('最多选 ' + (q.max || 3) + ' 项')
+  app.innerHTML =
+    '<div class="card question-page" style="max-width:720px;margin:0 auto">' +
+    '<div class="progress-bar"><div class="progress-fill" style="width:' +
+    progress +
+    '%"></div></div>' +
+    '<p class="text-muted">第 ' +
+    (draft.qIndex + 1) +
+    ' / ' +
+    window.TDConstants.QUESTIONS.length +
+    ' 题</p>' +
+    '<h1 class="question-title">' +
+    window.TDUtils.esc(q.title) +
+    '</h1>' +
+    '<p class="question-sub">' +
+    window.TDUtils.esc(q.subtitle) +
+    '</p>' +
+    multiHint +
+    '<div class="option-list">' +
+    options +
+    '</div>' +
+    '<div class="form-nav">' +
+    '<button type="button" class="btn-secondary" id="q-prev">' +
+    (draft.qIndex === 0 ? '返回咨询' : '上一题') +
+    '</button>' +
+    '<button type="button" class="btn-primary" id="q-next"' +
+    (canNext ? '' : ' disabled') +
+    '>' +
+    nextLabel +
+    '</button>' +
+    '</div></div>'
+
+  app.querySelectorAll('.option-item[data-qidx]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      const idx = parseInt(btn.getAttribute('data-qidx'), 10)
+      if (isNaN(idx) || idx < 0 || idx >= q.options.length) return
+      const opt = q.options[idx]
+
+      if (isMulti) {
+        let arr = Array.isArray(draft.answers[field]) ? draft.answers[field].slice() : []
+        const pos = arr.indexOf(opt)
+        if (pos >= 0) {
+          arr.splice(pos, 1)
+        } else {
+          if (q.max && arr.length >= q.max) {
+            window.TDUtils.showToast('最多选 ' + q.max + ' 项，可先点已选项取消')
             return
           }
           arr.push(opt)
@@ -2378,11 +2487,23 @@ function renderQuestionnaire() {
         draft.answers[field] = opt
       }
       saveDraft()
+
+      if (!isMulti) {
+        if (isLast) {
+          draft.basicStep = 1
+          saveDraft()
+          window.TDUtils.goPage('consult', 'basic')
+        } else {
+          draft.qIndex += 1
+          renderQuestionnaire()
+        }
+        return
+      }
       renderQuestionnaire()
     })
   })
 
-  document.getElementById('q-prev').addEventListener('click', () => {
+  window.TDUtils.onId('q-prev', 'click', function () {
     if (draft.qIndex === 0) window.TDUtils.goPage('consult')
     else {
       draft.qIndex -= 1
@@ -2390,8 +2511,21 @@ function renderQuestionnaire() {
     }
   })
 
-  document.getElementById('q-next').addEventListener('click', () => {
+  window.TDUtils.onId('q-next', 'click', function () {
+    const cur = window.TDConstants.QUESTIONS[draft.qIndex]
+    const f = cur.field
+    const multi = cur.type === 'multiple'
+    const sel = draft.answers[f]
+    const ok = multi
+      ? Array.isArray(sel) && sel.length > 0
+      : !!sel
+    if (!ok) {
+      window.TDUtils.showToast('请先选择至少一项')
+      return
+    }
     if (draft.qIndex >= window.TDConstants.QUESTIONS.length - 1) {
+      draft.basicStep = 1
+      saveDraft()
       window.TDUtils.goPage('consult', 'basic')
       return
     }
@@ -2401,7 +2535,9 @@ function renderQuestionnaire() {
 }
 
 function renderBasicInfo() {
-  if (!draft.answers.q1_stage) {
+  initDraftFromStorage()
+  if (!isQuestionnaireComplete()) {
+    window.TDUtils.showToast('请先完成 5 道问卷')
     window.TDUtils.goPage('consult', 'start')
     return
   }
@@ -2411,29 +2547,96 @@ function renderBasicInfo() {
   let body = ''
 
   if (step === 1) {
-    body = `
-      <h1 class="question-title">业态与投资</h1>
-      <p class="question-sub">先选业态与投资情况，便于匹配诊断口径</p>
-      <p class="field-label">属于什么类型的服务业？ *</p>
-      <div class="option-list">${window.TDConstants.INDUSTRY_TYPES.map((o) => `<button type="button" class="option-item ${b.industryType === o ? 'selected' : ''}" data-field="industryType" data-value="${window.TDUtils.esc(o)}">${window.TDUtils.esc(o)}</button>`).join('')}</div>
-      <p class="field-label">投资情况 · 目前状态 *</p>
-      <div class="option-list">${window.TDConstants.INVESTMENT_STATUS.map((o) => `<button type="button" class="option-item ${b.investmentStatus === o ? 'selected' : ''}" data-field="investmentStatus" data-value="${window.TDUtils.esc(o)}">${window.TDUtils.esc(o)}</button>`).join('')}</div>
-      <p class="field-label">金额区间 *</p>
-      <div class="option-list">${window.TDConstants.INVESTMENT_RANGES.map((o) => `<button type="button" class="option-item ${b.investmentRange === o ? 'selected' : ''}" data-field="investmentRange" data-value="${window.TDUtils.esc(o)}">${window.TDUtils.esc(o)}</button>`).join('')}</div>`
+    body =
+      '<h1 class="question-title">业态与投资</h1>' +
+      '<p class="question-sub">先选业态与投资情况，便于匹配诊断口径</p>' +
+      '<p class="field-label">属于什么类型的服务业？ *</p>' +
+      '<div class="option-list">' +
+      window.TDConstants.INDUSTRY_TYPES.map(function (o, i) {
+        return (
+          '<button type="button" class="option-item' +
+          (b.industryType === o ? ' selected' : '') +
+          '" data-basic="industryType" data-idx="' +
+          i +
+          '">' +
+          window.TDUtils.esc(o) +
+          '</button>'
+        )
+      }).join('') +
+      '</div>' +
+      '<p class="field-label">投资情况 · 目前状态 *</p>' +
+      '<div class="option-list">' +
+      window.TDConstants.INVESTMENT_STATUS.map(function (o, i) {
+        return (
+          '<button type="button" class="option-item' +
+          (b.investmentStatus === o ? ' selected' : '') +
+          '" data-basic="investmentStatus" data-idx="' +
+          i +
+          '">' +
+          window.TDUtils.esc(o) +
+          '</button>'
+        )
+      }).join('') +
+      '</div>' +
+      '<p class="field-label">金额区间 *</p>' +
+      '<div class="option-list">' +
+      window.TDConstants.INVESTMENT_RANGES.map(function (o, i) {
+        return (
+          '<button type="button" class="option-item' +
+          (b.investmentRange === o ? ' selected' : '') +
+          '" data-basic="investmentRange" data-idx="' +
+          i +
+          '">' +
+          window.TDUtils.esc(o) +
+          '</button>'
+        )
+      }).join('') +
+      '</div>'
   } else {
-    body = `
-      <h1 class="question-title">联系方式</h1>
-      <p class="question-sub">留下城市与电话，24 小时内与您联系</p>
-      <label class="field-block"><span class="field-label">所在城市 *</span><input class="field-input" id="city" value="${window.TDUtils.esc(b.city || '')}" placeholder="如：成都、重庆" /></label>
-      <label class="field-block"><span class="field-label">手机号码 *</span><input class="field-input" id="phone" value="${window.TDUtils.esc(b.phone || '')}" placeholder="11 位手机号" maxlength="11" /></label>
-      <p class="field-label">年龄（选填）</p>
-      <div class="option-list">${window.TDConstants.AGE_RANGES.map((o) => `<button type="button" class="option-item ${(b.age || '不填写') === o ? 'selected' : ''}" data-field="age" data-value="${window.TDUtils.esc(o)}">${window.TDUtils.esc(o)}</button>`).join('')}</div>
-      <p class="field-label">性别（选填）</p>
-      <div class="option-list">${window.TDConstants.GENDERS.map((o) => `<button type="button" class="option-item ${(b.gender || '不填写') === o ? 'selected' : ''}" data-field="gender" data-value="${window.TDUtils.esc(o)}">${window.TDUtils.esc(o)}</button>`).join('')}</div>
-      <div class="privacy-row" id="privacy-toggle">
-        <span class="privacy-check ${b.privacyAgreed ? 'checked' : ''}">${b.privacyAgreed ? '✓' : ''}</span>
-        <span>我已阅读并同意 <span class="privacy-link" id="open-privacy">《隐私政策》</span>，授权用于咨询联系与进度通知</span>
-      </div>`
+    body =
+      '<h1 class="question-title">联系方式</h1>' +
+      '<p class="question-sub">留下城市与电话，24 小时内与您联系</p>' +
+      '<label class="field-block"><span class="field-label">所在城市 *</span><input class="field-input" id="city" value="' +
+      window.TDUtils.esc(b.city || '') +
+      '" placeholder="如：成都、重庆" /></label>' +
+      '<label class="field-block"><span class="field-label">手机号码 *</span><input class="field-input" id="phone" value="' +
+      window.TDUtils.esc(b.phone || '') +
+      '" placeholder="11 位手机号" maxlength="11" inputmode="numeric" /></label>' +
+      '<p class="field-label">年龄（选填）</p>' +
+      '<div class="option-list">' +
+      window.TDConstants.AGE_RANGES.map(function (o, i) {
+        return (
+          '<button type="button" class="option-item' +
+          ((b.age || '不填写') === o ? ' selected' : '') +
+          '" data-basic="age" data-idx="' +
+          i +
+          '">' +
+          window.TDUtils.esc(o) +
+          '</button>'
+        )
+      }).join('') +
+      '</div>' +
+      '<p class="field-label">性别（选填）</p>' +
+      '<div class="option-list">' +
+      window.TDConstants.GENDERS.map(function (o, i) {
+        return (
+          '<button type="button" class="option-item' +
+          ((b.gender || '不填写') === o ? ' selected' : '') +
+          '" data-basic="gender" data-idx="' +
+          i +
+          '">' +
+          window.TDUtils.esc(o) +
+          '</button>'
+        )
+      }).join('') +
+      '</div>' +
+      '<div class="privacy-row" id="privacy-toggle">' +
+      '<span class="privacy-check ' +
+      (b.privacyAgreed ? 'checked' : '') +
+      '">' +
+      (b.privacyAgreed ? '✓' : '') +
+      '</span>' +
+      '<span>我已阅读并同意 <span class="privacy-link" id="open-privacy">《隐私政策》</span>，授权用于咨询联系与进度通知</span></div>'
   }
 
   app.innerHTML = `
@@ -2446,9 +2649,22 @@ function renderBasicInfo() {
       </div>
     </div>`
 
-  app.querySelectorAll('[data-field]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      draft.basic[btn.dataset.field] = btn.dataset.value
+  const basicLists = {
+    industryType: window.TDConstants.INDUSTRY_TYPES,
+    investmentStatus: window.TDConstants.INVESTMENT_STATUS,
+    investmentRange: window.TDConstants.INVESTMENT_RANGES,
+    age: window.TDConstants.AGE_RANGES,
+    gender: window.TDConstants.GENDERS
+  }
+
+  app.querySelectorAll('.option-item[data-basic]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      const key = btn.getAttribute('data-basic')
+      const idx = parseInt(btn.getAttribute('data-idx'), 10)
+      const list = basicLists[key]
+      if (!list || isNaN(idx) || idx < 0 || idx >= list.length) return
+      draft.basic[key] = list[idx]
+      saveDraft()
       renderBasicInfo()
     })
   })
@@ -2461,15 +2677,18 @@ function renderBasicInfo() {
     }
   })
 
-  window.TDUtils.onId('city', 'input', (e) => {
+  window.TDUtils.onId('city', 'input', function (e) {
     draft.basic.city = e.target.value
+    saveDraft()
   })
-  window.TDUtils.onId('phone', 'input', (e) => {
+  window.TDUtils.onId('phone', 'input', function (e) {
     draft.basic.phone = e.target.value
+    saveDraft()
   })
-  window.TDUtils.onId('privacy-toggle', 'click', (e) => {
+  window.TDUtils.onId('privacy-toggle', 'click', function (e) {
     if (e.target.id === 'open-privacy') return
     draft.basic.privacyAgreed = !draft.basic.privacyAgreed
+    saveDraft()
     renderBasicInfo()
   })
   window.TDUtils.onId('open-privacy', 'click', (e) => {
@@ -2485,6 +2704,7 @@ function renderBasicInfo() {
         return
       }
       draft.basicStep = 2
+      saveDraft()
       renderBasicInfo()
       return
     }
@@ -3009,6 +3229,8 @@ function render() {
 }
 
 window.addEventListener('hashchange', render)
+window.addEventListener('popstate', render)
+window.__tdRender = render
 
 bindSiteNav()
 

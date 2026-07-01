@@ -92,6 +92,9 @@ img { max-width: 100%; display: block; }
   font-size: 15px;
   font-weight: 700;
   transition: transform 0.15s, opacity 0.15s;
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
 }
 .btn-primary:hover, .btn-accent:hover, .btn-secondary:hover { transform: translateY(-1px); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
@@ -387,15 +390,22 @@ img { max-width: 100%; display: block; }
 .question-page .progress-fill { height: 100%; background: var(--color-coral); border-radius: 999px; transition: width 0.3s; }
 .question-title { font-size: 22px; font-weight: 800; margin: 0 0 8px; color: var(--color-primary); }
 .question-sub { font-size: 14px; color: var(--color-text-muted); margin: 0 0 24px; }
+.question-hint { font-size: 13px; color: var(--color-mint); font-weight: 600; margin: -12px 0 16px; }
 .option-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
 .option-item {
   width: 100%; text-align: left; padding: 16px 20px;
   border-radius: var(--radius-lg); border: 2px solid var(--color-border);
   background: var(--color-card); font-size: 15px; transition: border-color 0.2s, background 0.2s;
+  cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
 .option-item:hover { border-color: rgba(232, 93, 76, 0.4); }
 .option-item.selected { border-color: var(--color-coral); background: rgba(232, 93, 76, 0.06); font-weight: 600; }
-.form-nav { display: flex; gap: 12px; }
+.form-nav { display: flex; gap: 12px; flex-wrap: wrap; }
+.consult-actions .btn-primary,
+.consult-actions .btn-accent,
+.consult-actions .btn-secondary {
+  cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
 
 .field-block { margin-bottom: 20px; }
 .field-label { font-size: 14px; color: var(--color-text-secondary); margin-bottom: 8px; display: block; }

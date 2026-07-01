@@ -45,7 +45,19 @@ export function pageUrl(page, sub) {
 }
 
 export function goPage(page, sub) {
-  window.location.href = pageUrl(page, sub)
+  const url = pageUrl(page, sub)
+  try {
+    if (window.history && window.history.pushState) {
+      window.history.pushState({ tdPage: page, tdSub: sub || '' }, '', url)
+      if (typeof window.__tdRender === 'function') {
+        window.__tdRender()
+        return
+      }
+    }
+  } catch (e) {
+    /* full navigation fallback */
+  }
+  window.location.href = url
 }
 
 export function parsePageQuery() {
